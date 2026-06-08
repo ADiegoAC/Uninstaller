@@ -1,0 +1,114 @@
+[
+  {
+    "Pattern": "Visual C\\+\\+ 2015-2022.*x64",
+    "CheckPath": "%SystemRoot%\\System32\\vcruntime140.dll",
+    "LocalPath": "%SystemRoot%\\System32",
+    "IconPath": "%SystemRoot%\\System32\\msiexec.exe",
+    "IsSystem": true
+  },
+  {
+    "Pattern": "Visual C\\+\\+ 2015-2022.*x86",
+    "CheckPath": "%SystemRoot%\\SysWOW64\\vcruntime140.dll",
+    "LocalPath": "%SystemRoot%\\SysWOW64",
+    "IconPath": "%SystemRoot%\\System32\\msiexec.exe",
+    "IsSystem": true
+  },
+  {
+    "Pattern": "Visual C\\+\\+ 2013.*x64",
+    "CheckPath": "%SystemRoot%\\System32\\msvcr120.dll",
+    "LocalPath": "%SystemRoot%\\System32",
+    "IconPath": "%SystemRoot%\\System32\\msiexec.exe",
+    "IsSystem": true
+  },
+  {
+    "Pattern": "Visual C\\+\\+ 2013.*x86",
+    "CheckPath": "%SystemRoot%\\SysWOW64\\msvcr120.dll",
+    "LocalPath": "%SystemRoot%\\SysWOW64",
+    "IconPath": "%SystemRoot%\\System32\\msiexec.exe",
+    "IsSystem": true
+  },
+  {
+    "Pattern": "Visual C\\+\\+ 2012.*x64",
+    "CheckPath": "%SystemRoot%\\System32\\msvcr110.dll",
+    "LocalPath": "%SystemRoot%\\System32",
+    "IconPath": "%SystemRoot%\\System32\\msiexec.exe",
+    "IsSystem": true
+  },
+  {
+    "Pattern": "Visual C\\+\\+ 2012.*x86",
+    "CheckPath": "%SystemRoot%\\SysWOW64\\msvcr110.dll",
+    "LocalPath": "%SystemRoot%\\SysWOW64",
+    "IconPath": "%SystemRoot%\\System32\\msiexec.exe",
+    "IsSystem": true
+  },
+  {
+    "Pattern": "Visual C\\+\\+ 2010.*x64",
+    "CheckPath": "%SystemRoot%\\System32\\msvcr100.dll",
+    "LocalPath": "%SystemRoot%\\System32",
+    "IconPath": "%SystemRoot%\\System32\\msiexec.exe",
+    "IsSystem": true
+  },
+  {
+    "Pattern": "Visual C\\+\\+ 2010.*x86",
+    "CheckPath": "%SystemRoot%\\SysWOW64\\msvcr100.dll",
+    "LocalPath": "%SystemRoot%\\SysWOW64",
+    "IconPath": "%SystemRoot%\\System32\\msiexec.exe",
+    "IsSystem": true
+  },
+  {
+    "Pattern": "Visual C\\+\\+ 2008.*x64",
+    "CheckPath": "%SystemRoot%\\WinSxS\\amd64_microsoft.vc90.crt*",
+    "LocalPath": "%SystemRoot%\\System32",
+    "IconPath": "%SystemRoot%\\System32\\msiexec.exe",
+    "IsSystem": true
+  },
+  {
+    "Pattern": "Visual C\\+\\+ 2008.*x86",
+    "CheckPath": "%SystemRoot%\\WinSxS\\x86_microsoft.vc90.crt*",
+    "LocalPath": "%SystemRoot%\\SysWOW64",
+    "IconPath": "%SystemRoot%\\System32\\msiexec.exe",
+    "IsSystem": true
+  },
+  {
+    "Pattern": "Visual C\\+\\+ 2005",
+    "CheckPath": "%SystemRoot%\\WinSxS\\x86_microsoft.vc80.crt*",
+    "LocalPath": "%SystemRoot%\\SysWOW64",
+    "IconPath": "%SystemRoot%\\System32\\msiexec.exe",
+    "IsSystem": true
+  },
+  {
+    "Pattern": "\\.NET Framework 4 Multi-Targeting Pack",
+    "CheckPath": "%ProgramFiles(x86)%\\Reference Assemblies\\Microsoft\\Framework\\.NETFramework\\v4.0",
+    "LocalPath": "%ProgramFiles(x86)%\\Reference Assemblies\\Microsoft\\Framework\\.NETFramework\\v4.0",
+    "IconPath": "%SystemRoot%\\System32\\msiexec.exe",
+    "IsSystem": true
+  },
+  {
+    "Pattern": "ASP\\.NET MVC [234]",
+    "CheckPath": "%ProgramFiles(x86)%\\Microsoft ASP.NET",
+    "LocalPath": "%ProgramFiles(x86)%\\Microsoft ASP.NET",
+    "IconPath": "%SystemRoot%\\System32\\msiexec.exe",
+    "IsSystem": true
+  },
+  {
+    "Pattern": "Windows Desktop Runtime.*x86",
+    "CheckPath": "%ProgramFiles(x86)%\\dotnet\\shared\\Microsoft.WindowsDesktop.App",
+    "LocalPath": "%ProgramFiles(x86)%\\dotnet\\shared\\Microsoft.WindowsDesktop.App",
+    "IconPath": "%SystemRoot%\\System32\\msiexec.exe",
+    "IsSystem": true
+  },
+  {
+    "Pattern": "Windows Desktop Runtime.*x64",
+    "CheckPath": "%ProgramFiles%\\dotnet\\shared\\Microsoft.WindowsDesktop.App",
+    "LocalPath": "%ProgramFiles%\\dotnet\\shared\\Microsoft.WindowsDesktop.App",
+    "IconPath": "%SystemRoot%\\System32\\msiexec.exe",
+    "IsSystem": true
+  },
+  {
+    "Pattern": "Visual Studio 2010 Shell",
+    "CheckPath": "%ProgramFiles(x86)%\\Microsoft Visual Studio 10.0\\Common7\\IDE\\devenv.exe",
+    "LocalPath": "%ProgramFiles(x86)%\\Microsoft Visual Studio 10.0",
+    "IconPath": "%ProgramFiles(x86)%\\Microsoft Visual Studio 10.0\\Common7\\IDE\\devenv.exe",
+    "IsSystem": false
+  }
+]

@@ -1,0 +1,37 @@
+﻿# Git ignore para o projeto Un1nst4ll3r
+
+# Windows artifacts
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+
+# PowerShell (temporary / cache files)
+*.ps1xml
+*.psc1
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Python / Node
+venv/
+env/
+__pycache__/
+node_modules/
+
+# Common backups
+*.bak
+*.old
+
+# Ignore generated or sensitive Un1nst4ll3r output (ajuste conforme necessário)
+Un1nst4ll3r_ScanResult.json
+
+# Pasta local com testes/versões
+Nova pasta/
+dist/
