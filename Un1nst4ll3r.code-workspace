@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"chat.tools.terminal.autoApprove": {
+			"/^powershell -NoProfile -ExecutionPolicy Bypass -Command \"& \\{ \\$s = Get-Content -Raw -Encoding UTF8 'C:\\\\Users\\\\Diego\\\\Downloads\\\\Un1nst4ll3r\\\\Un1nst4ll3r\\.ps1'; Invoke-Expression \\$s; Get-Un1nst4ll3rScan \\| Format-Table Nome,Versao,Fabricante,Tamanho,Tipo,Status -AutoSize \\| Out-String -Width 4096 \\}\"$/": {
+				"approve": true,
+				"matchCommandLine": true
+			},
+			"/^cd 'c:\\\\Users\\\\Diego\\\\Downloads\\\\Un1nst4ll3r' ; powershell -NoProfile -Command \"\\$worker = New-Object System\\.ComponentModel\\.BackgroundWorker; \\$worker\\.add_DoWork\\(\\{ param\\(\\$sender,\\$e\\); \\$e\\.Result = 1 \\}\\); Write-Host 'ok'\"$/": {
+				"approve": true,
+				"matchCommandLine": true
+			}
+		},
+		"files.encoding": "utf8bom"
+	}
+}

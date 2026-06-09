@@ -17,7 +17,7 @@ $RECYCLE.BIN/
 
 # VS Code
 .vscode/
-*.code-workspace
+#*.code-workspace
 
 # Python / Node
 venv/
@@ -38,3 +38,6 @@ dist/
 
 # Outros arquivos
 Un1nst4ll3r-UI.ps1.txt
+Un1nst4ll3r.exe
+Un1nst4ll3r.ps1.txt
+compiler.ps1
