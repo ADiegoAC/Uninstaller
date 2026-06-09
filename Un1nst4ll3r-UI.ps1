@@ -1,7 +1,12 @@
-﻿# ======================================================================
+# ======================================================================
 #  Un1nst4ll3r - Interface Gráfica (Capítulo 2)
 #  Versão: 1.5 (Multi-Language & UI Refinements)
 # ======================================================================
+
+# Força o terminal do Windows a usar UTF-8 para exibir acentos corretamente no console
+#[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+#[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+ #$OutputEncoding = [System.Text.Encoding]::UTF8
 
 # 1. Truque de DPI Awareness
 Add-Type -TypeDefinition @'
@@ -34,7 +39,7 @@ if (Test-Path $enginePath) {
 
 if (Test-Path $script:langPath) {
     try {
-        $langRaw = Get-Content -Path $script:langPath -Raw -Encoding UTF8
+        $langRaw = [System.IO.File]::ReadAllText($script:langPath, [System.Text.Encoding]::UTF8)
         $langObj = ConvertFrom-Json -InputObject $langRaw
         $script:LangData = $langObj.$script:CurrentLang
     } catch {
@@ -67,7 +72,7 @@ if ($null -eq $script:LangData) {
 # ==========================================
 function Test-AndInstallPowerShell7 {
     # Se já for PS7+, sai da função e deixa o app rodar normal
-    if ($PSVersionTable.PSVersion.Major -ge 8) { return }
+    if ($PSVersionTable.PSVersion.Major -ge 7) { return }
 
     $L = $script:LangData
 
@@ -151,7 +156,7 @@ function Test-AndInstallPowerShell7 {
     $updateSub.AutoSize = $true
     $updateSub.Location = New-Object System.Drawing.Point(22, 50)
 
-    $terminalBox = New-Object System.Windows.Forms.TextBox
+    $terminalBox = New-Object System.Windows.Forms.RichTextBox
     $terminalBox.Multiline = $true
     $terminalBox.ReadOnly = $true
     $terminalBox.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
@@ -160,15 +165,11 @@ function Test-AndInstallPowerShell7 {
     $terminalBox.Size = New-Object System.Drawing.Size(540, 180)
     $terminalBox.Location = New-Object System.Drawing.Point(20, 80)
     $terminalBox.ScrollBars = "Vertical"
-
-    $progressBar = New-Object System.Windows.Forms.ProgressBar
-    $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
-    $progressBar.MarqueeAnimationSpeed = 30
-    $progressBar.Size = New-Object System.Drawing.Size(540, 25)
-    $progressBar.Location = New-Object System.Drawing.Point(20, 270)
-    $progressBar.ForeColor = [System.Drawing.Color]::FromArgb(0, 191, 255)
-
-    $updateForm.Controls.AddRange(@($updateTitle, $updateSub, $terminalBox, $progressBar))
+    $terminalBox.BorderStyle = [System.Windows.Forms.BorderStyle]::None # Deixa mais cybertnico
+    # Evita o som irritante de "beep" ao apertar Enter com ele focado
+    $terminalBox.Add_KeyDown({ if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Enter) { $_.SuppressKeyPress = $true } })
+    
+    $updateForm.Controls.AddRange(@($updateTitle, $updateSub, $terminalBox))
     $updateForm.Show()
     [System.Windows.Forms.Application]::DoEvents()
 
@@ -187,11 +188,58 @@ function Test-AndInstallPowerShell7 {
 
         # Lê a saída em tempo real sem travar a UI
         while (!$proc.StandardOutput.EndOfStream) {
-            $line = $proc.StandardOutput.ReadLine()
-            $terminalBox.AppendText("$line`r`n")
+            $rawLine = $proc.StandardOutput.ReadLine()
+            
+            # 1. Remove códigos de cor ANSI (ex: [32m) que o Winget usa e que sujam o texto
+            $cleanLine = $rawLine -replace '\x1b\[[0-9;]*[a-zA-Z]', ''
+            
+            # 2. O Winget usa \r para sobrescrever a mesma linha. Se vier tudo de uma vez, pegamos apenas a última "atualização"
+            if ($cleanLine -match '\r') {
+                $cleanLine = ($cleanLine -split '\r')[-1]
+            }
+            
+            $line = $cleanLine.TrimEnd()
+
+            # Ignora linhas completamente vazias após a limpeza
+            if ([string]::IsNullOrWhiteSpace($line)) { 
+                [System.Windows.Forms.Application]::DoEvents()
+                continue 
+            }
+
+            # 3. Regex MELHORADA: Detecta spinners (-, |, /, \), porcentagens, blocos unicode (█░) e barras [====]
+            $isProgress = $line -match '[-|/\\]\s*$' -or `          # Spinner no final da linha
+                          $line -match '\d+\s*%' -or `             # Porcentagem (ex: 50 %)
+                          #$line -match '[█░▓▒■□▪▫]' -or `          # Barras de bloco (unicode)
+                          $line -match '\[=+[^\]]*\]' -or `        # Barras estilo [====]
+                          $line -match '^\s*\*{2,}'                # Múltiplos asteriscos
+            
+            if ($isProgress) {
+                # Sobrescreve a última linha (animação/progresso)
+                if ($terminalBox.Text.Length -gt 0) {
+                    $lastNewLine = $terminalBox.Text.LastIndexOf("`n")
+                    if ($lastNewLine -ge 0) {
+                        $terminalBox.Select($lastNewLine + 1, $terminalBox.TextLength - ($lastNewLine + 1))
+                    } else {
+                        $terminalBox.Select(0, $terminalBox.TextLength)
+                    }
+                } else {
+                    $terminalBox.Select(0, 0)
+                }
+                $terminalBox.SelectedText = $line
+            } else {
+                # Texto normal de log, adiciona com quebra de linha
+                $terminalBox.AppendText("$line`n")
+            }
+            
+            # Auto-scroll forçado para o final do texto
+            $terminalBox.SelectionStart = $terminalBox.TextLength
+            $terminalBox.SelectionLength = 0
+            $terminalBox.ScrollToCaret()
+            
+            # Permite que a interface gráfica respire
             [System.Windows.Forms.Application]::DoEvents()
         }
-        
+
         $proc.WaitForExit()
         $installSuccess = ($proc.ExitCode -eq 0)
     }
@@ -200,8 +248,6 @@ function Test-AndInstallPowerShell7 {
         $installSuccess = $false
     }
 
-    $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
-    $progressBar.Value = 100
 
     if ($installSuccess) {
         $terminalBox.AppendText("`r`n" + $L.UpdateSuccess)
@@ -210,11 +256,18 @@ function Test-AndInstallPowerShell7 {
         $updateForm.Close()
 
         # Tenta encontrar o pwsh.exe recém instalado
-        $pwshPaths = @(
-            "$env:ProgramFiles\PowerShell\7\pwsh.exe",
-            "${env:ProgramFiles(x86)}\PowerShell\7\pwsh.exe"
-        )
-        $pwshExe = $pwshPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+        # PRIORIDADE 1: Get-Command (Resolve automático via PATH do Windows, pega da Store, Winget, MSI)
+        $pwshExe = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
+        
+        # PRIORIDADE 2: Fallback direto nas pastas do sistema (se o PATH não atualizou na mesma hora)
+        if ([string]::IsNullOrWhiteSpace($pwshExe)) {
+            $pwshPaths = @(
+                "$env:ProgramFiles\PowerShell\7\pwsh.exe",
+                "${env:ProgramFiles(x86)}\PowerShell\7\pwsh.exe",
+                [System.IO.Path]::Combine($env:LocalAppData, "Microsoft", "WindowsApps", "pwsh.exe")
+            )
+            $pwshExe = $pwshPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+        }
 
         if ($pwshExe) {
             # AUTO-RELAUNCH: O script se encerra e reabre usando o novo PowerShell 7
@@ -230,14 +283,16 @@ function Test-AndInstallPowerShell7 {
         exit
     }
 }
-Test-AndInstallPowerShell7
+
+#Test-AndInstallPowerShell7
+
 # 5. Caminhos de Cache e Banco de Sistema
  $script:jsonPath = Join-Path $PSScriptRoot "Un1nst4ll3r_ScanResult.json"
  $script:sysBankPath = Join-Path $PSScriptRoot "Un1nst4ll3r_SysPkgBank.json"
  $Global:SysPkgBank = @()
  if (Test-Path $script:sysBankPath) {
     try {
-        $sysBankRaw = Get-Content -Path $script:sysBankPath -Raw -Encoding UTF8
+        $sysBankRaw = [System.IO.File]::ReadAllText($script:sysBankPath, [System.Text.Encoding]::UTF8)
         $Global:SysPkgBank = ConvertFrom-Json -InputObject $sysBankRaw
     } catch {}
  } 
@@ -710,7 +765,7 @@ function Update-Grid {
     $splashForm.Show()
     $splashForm.Refresh()
     [System.Windows.Forms.Application]::DoEvents()
-
+    
     try {
         & $Global:Un1LogAction $L.Phase1
         $scanResult = Get-Un1nst4ll3rScan
@@ -718,6 +773,14 @@ function Update-Grid {
         & $Global:Un1LogAction $L.Phase2
         $deepResult = Get-Un1nst4ll3rDeepSize -ProgramList $scanResult
 
+        # FASE 2.5: Busca órfãos e ANEXA à lista principal ANTES de medir o tamanho
+        & $Global:Un1LogAction "Phase 2.5: Scanning MuiCache for orphans..."
+        $orphanApps = Find-Un1nst4ll3rOrphans -ResolvedPrograms $deepResult
+        if ($orphanApps.Count -gt 0) {
+            $deepResult.AddRange($orphanApps)
+        }
+
+        # Agora sim, mede o tamanho de TODO MUNDO (Registro + Órfãos)
         & $Global:Un1LogAction $L.Phase3
         $deepResult = Get-Un1nst4ll3rSizeEngine -ProgramList $deepResult
         
@@ -726,7 +789,7 @@ function Update-Grid {
         
         & $Global:Un1LogAction $L.PhaseGrid
         Load-GridFromJson -Path $script:jsonPath
-    }
+    }    
     catch {
         $statusLabel.Text = "Error during scan."
         [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "Error", "OK", "Error")
