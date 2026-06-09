@@ -40,7 +40,16 @@
     "StatusNoLocation": "SemLocal",
     "StatusSystem": "Sistema",
     "SizeNA": "N/A",
-    "ConfirmUninstallMessage": "Deseja desinstalar {0}?"
+    "ConfirmUninstallMessage": "Deseja desinstalar {0}?",
+    "UninstallCancelled": "Desinstalação cancelada pelo usuário.",
+    "UpdateRequiredTitle": "Atualização Necessária",
+    "UpdateRequiredMsg": "O Un1nst4ll3r requer o PowerShell 7 para funcionar corretamente. Deseja baixar e instalar agora?",
+    "UpdateDeclined": "O aplicativo não pode continuar sem o PowerShell 7.",
+    "UpdateProgressTitle": "ATUALIZANDO POWERSHELL",
+    "UpdateProgressSub": "Baixando e instalando via Winget...",
+    "UpdateSuccess": "Instalação concluída! Reiniciando o aplicativo...",
+    "UpdateFailed": "Falha na instalação. Por favor, instale o PowerShell 7 manualmente.",
+    "UpdateWingetNotFound": "O Winget não foi encontrado neste sistema. Por favor, instale o PowerShell 7 manualmente."
   },
   "en-US": {
     "Title": "Un1nst4ll3r",
@@ -83,7 +92,16 @@
     "StatusNoLocation": "NoLocation",
     "StatusSystem": "System",
     "SizeNA": "N/A",
-    "ConfirmUninstallMessage": "Do you want to uninstall {0}?"
+    "ConfirmUninstallMessage": "Do you want to uninstall {0}?",
+    "UninstallCancelled": "Uninstall cancelled by user.",
+    "UpdateRequiredTitle": "Update Required",
+    "UpdateRequiredMsg": "Un1nst4ll3r requires PowerShell 7 to function properly. Do you want to download and install it now?",
+    "UpdateDeclined": "The application cannot continue without PowerShell 7.",
+    "UpdateProgressTitle": "UPDATING POWERSHELL",
+    "UpdateProgressSub": "Downloading and installing via Winget...",
+    "UpdateSuccess": "Installation complete! Restarting application...",
+    "UpdateFailed": "Installation failed. Please install PowerShell 7 manually.",
+    "UpdateWingetNotFound": "Winget was not found on this system. Please install PowerShell 7 manually."
   },
   "es-ES": {
     "Title": "Un1nst4ll3r",
@@ -126,6 +144,15 @@
     "StatusNoLocation": "SinUbicación",
     "StatusSystem": "Sistema",
     "SizeNA": "N/D",
-    "ConfirmUninstallMessage": "¿Desea desinstalar {0}?"
+    "ConfirmUninstallMessage": "¿Desea desinstalar {0}?",
+    "UninstallCancelled": "Desinstalación cancelada por el usuario.",
+    "UpdateRequiredTitle": "Actualización Necesaria",
+    "UpdateRequiredMsg": "Un1nst4ll3r requiere PowerShell 7 para funcionar correctamente. ¿Desea descargarlo e instalarlo ahora?",
+    "UpdateDeclined": "La aplicación no puede continuar sin PowerShell 7.",
+    "UpdateProgressTitle": "ACTUALIZANDO POWERSHELL",
+    "UpdateProgressSub": "Descargando e instalando vía Winget...",
+    "UpdateSuccess": "¡Instalación completada! Reiniciando la aplicación...",
+    "UpdateFailed": "Fallo en la instalación. Por favor, instale PowerShell 7 manualmente.",
+    "UpdateWingetNotFound": "No se encontró Winget en este sistema. Por favor, instale PowerShell 7 manualmente."
   }
 }

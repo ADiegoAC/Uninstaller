@@ -62,6 +62,175 @@ if ($null -eq $script:LangData) {
     }
 }
 
+# ==========================================
+# 4.5 Verificação e Atualização do PowerShell 7
+# ==========================================
+function Test-AndInstallPowerShell7 {
+    # Se já for PS7+, sai da função e deixa o app rodar normal
+    if ($PSVersionTable.PSVersion.Major -ge 8) { return }
+
+    $L = $script:LangData
+
+    # --- DIALOG DE PERGUNTA (Estilizada) ---
+    $promptForm = New-Object System.Windows.Forms.Form
+    $promptForm.Text = $L.UpdateRequiredTitle
+    $promptForm.Size = New-Object System.Drawing.Size(450, 200)
+    $promptForm.StartPosition = "CenterScreen"
+    $promptForm.FormBorderStyle = "FixedDialog"
+    $promptForm.MaximizeBox = $false
+    $promptForm.MinimizeBox = $false
+    $promptForm.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 30)
+    $promptForm.ForeColor = [System.Drawing.Color]::White
+
+    $promptLabel = New-Object System.Windows.Forms.Label
+    $promptLabel.Text = $L.UpdateRequiredMsg
+    $promptLabel.Font = New-Object System.Drawing.Font("Consolas", 10)
+    $promptLabel.ForeColor = [System.Drawing.Color]::White
+    $promptLabel.Size = New-Object System.Drawing.Size(400, 60)
+    $promptLabel.Location = New-Object System.Drawing.Point(20, 20)
+
+    $btnYes = New-Object System.Windows.Forms.Button
+    $btnYes.Text = "OK"
+    $btnYes.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
+    $btnYes.BackColor = [System.Drawing.Color]::FromArgb(0, 191, 255)
+    $btnYes.ForeColor = [System.Drawing.Color]::Black
+    $btnYes.FlatStyle = "Flat"
+    $btnYes.Size = New-Object System.Drawing.Size(100, 35)
+    $btnYes.Location = New-Object System.Drawing.Point(110, 110)
+    $btnYes.DialogResult = [System.Windows.Forms.DialogResult]::Yes
+
+    $btnNo = New-Object System.Windows.Forms.Button
+    $btnNo.Text = "CANCEL"
+    $btnNo.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
+    $btnNo.BackColor = [System.Drawing.Color]::FromArgb(80, 80, 80)
+    $btnNo.ForeColor = [System.Drawing.Color]::White
+    $btnNo.FlatStyle = "Flat"
+    $btnNo.Size = New-Object System.Drawing.Size(100, 35)
+    $btnNo.Location = New-Object System.Drawing.Point(230, 110)
+    $btnNo.DialogResult = [System.Windows.Forms.DialogResult]::No
+
+    $promptForm.Controls.AddRange(@($promptLabel, $btnYes, $btnNo))
+
+    $result = $promptForm.ShowDialog()
+
+    if ($result -ne [System.Windows.Forms.DialogResult]::Yes) {
+        [System.Windows.Forms.MessageBox]::Show($L.UpdateDeclined, $L.Title, "OK", "Warning")
+        exit # Fecha o app
+    }
+    $promptForm.Dispose()
+
+    # --- VERIFICA SE WINGET EXISTE ---
+    $wingetExe = Get-Command winget.exe -ErrorAction SilentlyContinue
+    if (!$wingetExe) {
+        [System.Windows.Forms.MessageBox]::Show($L.UpdateWingetNotFound, $L.Title, "OK", "Error")
+        exit
+    }
+
+    # --- MINI-TERMINAL DE INSTALAÇÃO (Estilizado) ---
+    $updateForm = New-Object System.Windows.Forms.Form
+    $updateForm.Text = $L.UpdateProgressTitle
+    $updateForm.Size = New-Object System.Drawing.Size(600, 350)
+    $updateForm.StartPosition = "CenterScreen"
+    $updateForm.FormBorderStyle = "FixedDialog"
+    $updateForm.MaximizeBox = $false
+    $updateForm.MinimizeBox = $false
+    $updateForm.BackColor = [System.Drawing.Color]::FromArgb(15, 15, 15)
+    $updateForm.ForeColor = [System.Drawing.Color]::White
+
+    $updateTitle = New-Object System.Windows.Forms.Label
+    $updateTitle.Text = $L.UpdateProgressTitle
+    $updateTitle.Font = New-Object System.Drawing.Font("Consolas", 16, [System.Drawing.FontStyle]::Bold)
+    $updateTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 191, 255)
+    $updateTitle.AutoSize = $true
+    $updateTitle.Location = New-Object System.Drawing.Point(20, 15)
+
+    $updateSub = New-Object System.Windows.Forms.Label
+    $updateSub.Text = $L.UpdateProgressSub
+    $updateSub.Font = New-Object System.Drawing.Font("Consolas", 9)
+    $updateSub.ForeColor = [System.Drawing.Color]::Gray
+    $updateSub.AutoSize = $true
+    $updateSub.Location = New-Object System.Drawing.Point(22, 50)
+
+    $terminalBox = New-Object System.Windows.Forms.TextBox
+    $terminalBox.Multiline = $true
+    $terminalBox.ReadOnly = $true
+    $terminalBox.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
+    $terminalBox.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 100) # Verde terminal
+    $terminalBox.Font = New-Object System.Drawing.Font("Consolas", 8)
+    $terminalBox.Size = New-Object System.Drawing.Size(540, 180)
+    $terminalBox.Location = New-Object System.Drawing.Point(20, 80)
+    $terminalBox.ScrollBars = "Vertical"
+
+    $progressBar = New-Object System.Windows.Forms.ProgressBar
+    $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Marquee
+    $progressBar.MarqueeAnimationSpeed = 30
+    $progressBar.Size = New-Object System.Drawing.Size(540, 25)
+    $progressBar.Location = New-Object System.Drawing.Point(20, 270)
+    $progressBar.ForeColor = [System.Drawing.Color]::FromArgb(0, 191, 255)
+
+    $updateForm.Controls.AddRange(@($updateTitle, $updateSub, $terminalBox, $progressBar))
+    $updateForm.Show()
+    [System.Windows.Forms.Application]::DoEvents()
+
+    # --- PROCESSO DE INSTALAÇÃO EM BACKGROUND ---
+    $installSuccess = $false
+    try {
+        $proc = New-Object System.Diagnostics.Process
+        $proc.StartInfo.FileName = $wingetExe.Source
+        $proc.StartInfo.Arguments = "install Microsoft.PowerShell --accept-package-agreements --accept-source-agreements --silent"
+        $proc.StartInfo.UseShellExecute = $false
+        $proc.StartInfo.RedirectStandardOutput = $true
+        $proc.StartInfo.RedirectStandardError = $true
+        $proc.StartInfo.CreateNoWindow = $true
+        
+        $proc.Start() | Out-Null
+
+        # Lê a saída em tempo real sem travar a UI
+        while (!$proc.StandardOutput.EndOfStream) {
+            $line = $proc.StandardOutput.ReadLine()
+            $terminalBox.AppendText("$line`r`n")
+            [System.Windows.Forms.Application]::DoEvents()
+        }
+        
+        $proc.WaitForExit()
+        $installSuccess = ($proc.ExitCode -eq 0)
+    }
+    catch {
+        $terminalBox.AppendText("ERRO: $($_.Exception.Message)`r`n")
+        $installSuccess = $false
+    }
+
+    $progressBar.Style = [System.Windows.Forms.ProgressBarStyle]::Continuous
+    $progressBar.Value = 100
+
+    if ($installSuccess) {
+        $terminalBox.AppendText("`r`n" + $L.UpdateSuccess)
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Seconds 3
+        $updateForm.Close()
+
+        # Tenta encontrar o pwsh.exe recém instalado
+        $pwshPaths = @(
+            "$env:ProgramFiles\PowerShell\7\pwsh.exe",
+            "${env:ProgramFiles(x86)}\PowerShell\7\pwsh.exe"
+        )
+        $pwshExe = $pwshPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+        if ($pwshExe) {
+            # AUTO-RELAUNCH: O script se encerra e reabre usando o novo PowerShell 7
+            Start-Process $pwshExe -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`""
+            exit
+        } else {
+            [System.Windows.Forms.MessageBox]::Show($L.UpdateFailed, $L.Title, "OK", "Error")
+            exit
+        }
+    } else {
+        [System.Windows.Forms.MessageBox]::Show($L.UpdateFailed, $L.Title, "OK", "Error")
+        $updateForm.Close()
+        exit
+    }
+}
+Test-AndInstallPowerShell7
 # 5. Caminhos de Cache e Banco de Sistema
  $script:jsonPath = Join-Path $PSScriptRoot "Un1nst4ll3r_ScanResult.json"
  $script:sysBankPath = Join-Path $PSScriptRoot "Un1nst4ll3r_SysPkgBank.json"
