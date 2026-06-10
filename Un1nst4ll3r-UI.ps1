@@ -76,6 +76,7 @@ if ($null -eq $script:LangData) {
     $script:LangData = [PSCustomObject]@{
         Title = "Un1nst4ll3r"; Version = "v2.2"; BtnScanList = "SCAN LIST"; BtnNewScan = "NEW SCAN"
         BtnUninstall = "UNINSTALL"; BtnCleanTraces = "CLEAN TRACES"; BtnViewLog = "VIEW LOG"
+        BtnHelp = "HELP"; BtnAbout = "ABOUT"
         ColName = "Nome"; ColVersion = "Versao"; ColManufacturer = "Fabricante"; ColSize = "Tamanho"
         ColType = "Tipo"; ColLocation = "Local"; ColStatus = "Status"
         StatusReady = "Ready."; StatusNoCache = "No cache. Click SCAN LIST."; StatusLoadingCache = "Loading cache..."
@@ -495,7 +496,26 @@ $versionLabel.ForeColor = [System.Drawing.Color]::Gray
 $versionLabel.AutoSize = $true
 $versionLabel.Location = New-Object System.Drawing.Point(20, 44)
 
-$headerPanel.Controls.AddRange(@($titleLabel, $versionLabel, $formIcon))
+# --- Help and About Buttons ---
+$btnHelp = New-Object System.Windows.Forms.Button
+$btnHelp.Text = $script:LangData.BtnHelp
+$btnHelp.Font = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Bold)
+$btnHelp.BackColor = [System.Drawing.Color]::FromArgb(60, 60, 60)
+$btnHelp.ForeColor = [System.Drawing.Color]::Black
+$btnHelp.FlatStyle = "Flat"
+$btnHelp.Size = New-Object System.Drawing.Size(55, 20)
+$btnHelp.Top = 12
+
+$btnAbout = New-Object System.Windows.Forms.Button
+$btnAbout.Text = $script:LangData.BtnAbout
+$btnAbout.Font = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Bold)
+$btnAbout.BackColor = [System.Drawing.Color]::FromArgb(60, 60, 60)
+$btnAbout.ForeColor = [System.Drawing.Color]::Black
+$btnAbout.FlatStyle = "Flat"
+$btnAbout.Size = New-Object System.Drawing.Size(55, 20)
+$btnAbout.Top = 12
+
+$headerPanel.Controls.AddRange(@($titleLabel, $versionLabel, $formIcon, $btnHelp, $btnAbout))
 
 # ==========================================
 # 11. Actions Toolbar (Primary Buttons & Languages)
@@ -800,6 +820,8 @@ function Update-UILanguage {
     $btnUninstall.Text = $L.BtnUninstall
     $btnCleanTraces.Text = $L.BtnCleanTraces
     $btnViewLog.Text = $L.BtnViewLog
+    $btnHelp.Text = $L.BtnHelp
+    $btnAbout.Text = $L.BtnAbout
     
     $dataGridView.Columns["Nome"].HeaderText = $L.ColName
     $dataGridView.Columns["Versao"].HeaderText = $L.ColVersion
@@ -1054,6 +1076,93 @@ $btnLangES.Add_Click({
     Update-UILanguage
 })
 
+# --- Help Button Click Event ---
+$btnHelp.Add_Click({
+    $readmePath = Join-Path $AppRoot "README.md"
+    if (!(Test-Path $readmePath)) {
+        [System.Windows.Forms.MessageBox]::Show("README.md not found in $AppRoot", "Error", "OK", "Error")
+        return
+    }
+
+    $helpForm = New-Object System.Windows.Forms.Form
+    $helpForm.Text = "Un1nst4ll3r - Documentation"
+    $helpForm.Size = New-Object System.Drawing.Size(800, 600)
+    $helpForm.StartPosition = "CenterParent"
+    $helpForm.BackColor = [System.Drawing.Color]::FromArgb(18, 18, 18)
+    $helpForm.Icon = $form.Icon
+
+})
+# --- About Button Click Event ---
+$btnAbout.Add_Click({
+    $aboutForm = New-Object System.Windows.Forms.Form
+    $aboutForm.Text = $script:LangData.BtnAbout
+    $aboutForm.Size = New-Object System.Drawing.Size(420, 280)
+    $aboutForm.StartPosition = "CenterParent"
+    $aboutForm.FormBorderStyle = "FixedDialog"
+    $aboutForm.MaximizeBox = $false
+    $aboutForm.MinimizeBox = $false
+    $aboutForm.BackColor = [System.Drawing.Color]::FromArgb(25, 25, 25)
+    $aboutForm.ForeColor = [System.Drawing.Color]::White
+    $aboutForm.Icon = $form.Icon
+    $aboutForm.Opacity = 1
+
+    # Gradient Background Drawing
+    $aboutForm.Add_Paint({
+        param($sender, $e)
+        $rect = $sender.ClientRectangle
+        $color1 = [System.Drawing.Color]::FromArgb(25, 25, 25)
+        $color2 = [System.Drawing.Color]::FromArgb(45, 55, 65) # Subtle deep blue-gray fade
+        $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect, $color1, $color2, [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
+        $e.Graphics.FillRectangle($brush, $rect)
+        $brush.Dispose()
+    })
+
+    $logo = New-Object System.Windows.Forms.PictureBox
+    $logo.Image = [System.Drawing.Image]::FromFile($(Join-Path $AppRoot "icon.ico"))
+    $logo.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::StretchImage
+    $logo.Size = New-Object System.Drawing.Size(64, 64)
+    $logo.Location = New-Object System.Drawing.Point(30, 30)
+    $logo.BackColor = [System.Drawing.Color]::Transparent
+
+    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle.Text = $script:LangData.Title
+    $lblTitle.Font = New-Object System.Drawing.Font("Consolas", 18, [System.Drawing.FontStyle]::Bold)
+    $lblTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 191, 255)
+    $lblTitle.Location = New-Object System.Drawing.Point(110, 35)
+    $lblTitle.AutoSize = $true
+    $lblTitle.BackColor = [System.Drawing.Color]::Transparent
+
+    $lblVer = New-Object System.Windows.Forms.Label
+    $lblVer.Text = $script:LangData.Version
+    $lblVer.Font = New-Object System.Drawing.Font("Consolas", 9)
+    $lblVer.ForeColor = [System.Drawing.Color]::Gray
+    $lblVer.Location = New-Object System.Drawing.Point(112, 70)
+    $lblVer.AutoSize = $true
+    $lblVer.BackColor = [System.Drawing.Color]::Transparent
+
+    $lblInfo = New-Object System.Windows.Forms.Label
+    $lblInfo.Text = "A high-performance system scanner and uninstaller.`nDeep discovery of orphans and legacy traces."
+    $lblInfo.Font = New-Object System.Drawing.Font("Consolas", 9)
+    $lblInfo.ForeColor = [System.Drawing.Color]::LightGray
+    $lblInfo.Location = New-Object System.Drawing.Point(30, 115)
+    $lblInfo.Size = New-Object System.Drawing.Size(360, 50)
+    $lblInfo.TextAlign = "MiddleCenter"
+    $lblInfo.BackColor = [System.Drawing.Color]::Transparent
+
+    $btnClose = New-Object System.Windows.Forms.Button
+    $btnClose.Text = "CLOSE"
+    $btnClose.FlatStyle = "Flat"
+    $btnClose.BackColor = [System.Drawing.Color]::FromArgb(40, 40, 40)
+    $btnClose.ForeColor = [System.Drawing.Color]::White
+    $btnClose.Size = New-Object System.Drawing.Size(100, 35)
+    $btnClose.Location = New-Object System.Drawing.Point(160, 190)
+    $btnClose.DialogResult = [System.Windows.Forms.DialogResult]::OK
+
+    $aboutForm.Controls.AddRange(@($logo, $lblTitle, $lblVer, $lblInfo, $btnClose))
+    $aboutForm.ShowDialog($form)
+})
+
+
 # ==========================================
 # 19. Form Boot Sequence
 # ==========================================
@@ -1076,30 +1185,33 @@ $form.Controls.Add($footerPanel)
 # ==========================================
 # 21. Resize Listener (Manual Right-Docking)
 # ==========================================
-$repositionLangButtons = {
+$repositionButtons = {
     $marginRight = 10
     $btnGap = 5
-    $btnWidth = 30
     
-    # Retrieve the dynamic width of the panel during resize actions
-    $currentWidth = $actionsPanel.ClientSize.Width
+    # 1. Reposition Language Buttons (Actions Panel)
+    $actWidth = $actionsPanel.ClientSize.Width
+    $langWidth = 30
     
-    # Calculate right-to-left offsets dynamically
-    $posX_ES  = $currentWidth - $btnWidth - $marginRight
-    $posX_EN  = $posX_ES - $btnWidth - $btnGap
-    $posX_POR = $posX_EN - $btnWidth - $btnGap
+    $btnLangES.Left = $actWidth - $langWidth - $marginRight
+    $btnLangEN.Left = $btnLangES.Left - $langWidth - $btnGap
+    $btnLangPT.Left = $btnLangEN.Left - $langWidth - $btnGap
+
+    # 2. Reposition Help/About Buttons (Header Panel)
+    # Fixed: Use headerPanel width instead of actionsPanel width
+    $headWidth = $headerPanel.ClientSize.Width
+    $headBtnWidth = 55
     
-    # Bind new coordinates
-    $btnLangES.Left = $posX_ES
-    $btnLangEN.Left = $posX_EN
-    $btnLangPT.Left = $posX_POR
+    $btnAbout.Left = $headWidth - $headBtnWidth - $marginRight
+    $btnHelp.Left  = $btnAbout.Left - $headBtnWidth - $btnGap
 }
 
-# Attach to the resize event handler of the top action bar
-$actionsPanel.Add_Resize($repositionLangButtons)
+# Attach to the resize event handlers of both relevant panels
+$actionsPanel.Add_Resize($repositionButtons)
+$headerPanel.Add_Resize($repositionButtons)
 
 # Force a pre-calculation call before displaying the GUI
-& $repositionLangButtons
+& $repositionButtons
 
 # ==========================================
 # 22. Launch Application
