@@ -32,9 +32,8 @@
 ## ⚙️ Technical Requirements  
 
 *   **OS**: Windows 8.1/10/11
-*   **Host**: **PowerShell 5.1 (Core) is highly recommended for maximum performance.
-*   **Privileges**: Must be run with **Administrator** rights to access system registry hives and protected folders.
-*   **Dependency**: Includes an auto-updater that utilizes **Winget** to keep your PowerShell environment up to date.
+*   **Host**: **PowerShell 5.1 (Core) but 7.x is highly recommended for maximum performance.
+*   **Dependency**: Includes an auto-updater that utilizes **Winget** to keep your PowerShell environment up to date.(under maintenance)
 
 ---
 
@@ -50,7 +49,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File Un1nst4ll3r-UI.ps1
 ---
 
 ## 📜 License & Credits
-Developed with ❤️ as a high-performance alternative to legacy uninstallers.
+Developed with brain as a high-performance alternative to legacy uninstallers.
 *   **Logs**: Stored in `$Global:Un1AnalysisLog`.
 *   **Engine**: Modular architecture located in `Un1nst4ll3r.ps1`.
 
