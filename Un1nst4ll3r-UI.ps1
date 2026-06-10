@@ -439,7 +439,7 @@ function Get-Un1nst4ll3rAppIcon {
  $actionsPanel = New-Object System.Windows.Forms.Panel
  $actionsPanel.Dock = "Top"
  $actionsPanel.Height = 50
- $actionsPanel.BackColor = [System.Drawing.Color]::FromArgb(40, 40, 40)
+ $actionsPanel.BackColor = [System.Drawing.Color]::FromArgb(30, 20, 30)
  $actionsPanel.Padding = New-Object System.Windows.Forms.Padding(10, 5, 10, 5)
 
  # --- Botões Principais (Gradiente Azul, ForeColor Black) ---
@@ -524,13 +524,11 @@ function Get-Un1nst4ll3rAppIcon {
 # ==========================================
 # 10. Área de Conteúdo (Grid e Log)
 # ==========================================
- $logTextBox = New-Object System.Windows.Forms.TextBox
- $logTextBox.Multiline = $true
+ $logTextBox = New-Object System.Windows.Forms.RichTextBox
  $logTextBox.ReadOnly = $true
  $logTextBox.Dock = "Fill"
  $logTextBox.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
- $logTextBox.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
- $logTextBox.Font = New-Object System.Drawing.Font("Consolas", 9)
+ $logTextBox.Font = New-Object System.Drawing.Font("Consolas", 8)
  $logTextBox.ScrollBars = "Vertical"
  $logTextBox.WordWrap = $false
  $logTextBox.Text = $script:LangData.LogInitText + [Environment]::NewLine
@@ -547,21 +545,24 @@ $dataGridView = New-Object System.Windows.Forms.DataGridView
 # ============================================================================
 
 $dataGridView.Dock = "Fill"
-$dataGridView.BackgroundColor = [System.Drawing.Color]::FromArgb(30, 30, 30)
+$dataGridView.BackgroundColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
 $dataGridView.BorderStyle = "None"
 $dataGridView.EnableHeadersVisualStyles = $false
 
-$dataGridView.ColumnHeadersDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
+$dataGridView.ColumnHeadersDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(40, 40, 40)
 $dataGridView.ColumnHeadersDefaultCellStyle.ForeColor = [System.Drawing.Color]::White
- $dataGridView.ColumnHeadersDefaultCellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
+ $dataGridView.ColumnHeadersDefaultCellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(40, 40, 40)
  $dataGridView.ColumnHeadersDefaultCellStyle.SelectionForeColor = [System.Drawing.Color]::White
 $dataGridView.ColumnHeadersDefaultCellStyle.Font = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Bold)
 
-$dataGridView.DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(40, 40, 40)
+$dataGridView.DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
 $dataGridView.DefaultCellStyle.ForeColor = [System.Drawing.Color]::LightGray
 $dataGridView.DefaultCellStyle.Font = New-Object System.Drawing.Font("Consolas", 9)
 
 $dataGridView.GridColor = [System.Drawing.Color]::FromArgb(60, 60, 60)
+$dataGridView.CellBorderStyle = "SingleHorizontal"
+$dataGridView.RowTemplate.DefaultCellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(80, 80, 80)
+$dataGridView.RowTemplate.DefaultCellStyle.SelectionForeColor = [System.Drawing.Color]::White   
 
 # ============================================================================
 # DataGridView - Comportamento
@@ -775,9 +776,19 @@ function Update-Grid {
 
         # FASE 2.5: Busca órfãos e ANEXA à lista principal ANTES de medir o tamanho
         & $Global:Un1LogAction "Phase 2.5: Scanning MuiCache for orphans..."
-        $orphanApps = Find-Un1nst4ll3rOrphans -ResolvedPrograms $deepResult
-        if ($orphanApps.Count -gt 0) {
-            $deepResult.AddRange($orphanApps)
+        $orphanApps = @(Find-Un1nst4ll3rOrphans -ResolvedPrograms $deepResult)
+        
+        # Garante que os órfãos sejam anexados à lista principal de forma segura
+        if ($orphanApps -and $orphanApps.Count -gt 0) {
+            # O operador + funciona perfeitamente com Arrays normais do PowerShell
+            $deepResult = @($deepResult) + @($orphanApps)
+            
+            # Log de debug para confirmar que colou
+            foreach($orp in $orphanApps) {
+                Write-Un1Log -Category "ORPHAN" -Message "Found $($orp.Nome) orphan application from MuiCache." -Color Magenta
+            }
+        } else {
+            Write-Un1Log -Category "ORPHAN" -Message "No orphan applications found in MuiCache." -Color Green
         }
 
         # Agora sim, mede o tamanho de TODO MUNDO (Registro + Órfãos)
@@ -912,17 +923,49 @@ function Load-GridFromJson {
  })
 
  $btnViewLog.Add_Click({
-    if ($null -ne $Global:Un1AnalysisLog -and $Global:Un1AnalysisLog.Length -gt 0) {
-        $logTextBox.Text = $Global:Un1AnalysisLog.ToString()
+    if ($null -ne $Global:Un1AnalysisLog -and $Global:Un1AnalysisLog.Count -gt 0) {
+        
+        $logTextBox.SuspendLayout() # Evita flickering (piscada) durante a atualização
+        $logTextBox.Clear()
+        
+        foreach ($entry in $Global:Un1AnalysisLog) {
+            # Posiciona o cursor no final do texto atual
+            $logTextBox.SelectionStart = $logTextBox.TextLength
+            $logTextBox.SelectionLength = 0
+
+            # Fallbacks caso a estrutura do entry seja a versão antiga
+            $ts = if ($entry.PSObject.Properties.Name -contains 'Timestamp') { $entry.Timestamp } else { ($entry.Text -split ' ')[0] }
+            $cat = if ($entry.PSObject.Properties.Name -contains 'Category') { $entry.Category } else { ($entry.Text -split ' ')[1] }
+            $msg = if ($entry.PSObject.Properties.Name -contains 'Message') { $entry.Message } else { $entry.Text }
+
+            # Converte o nome da cor do Console (ex: "Cyan") para Drawing.Color
+            $drawColor = [System.Drawing.Color]::FromName($entry.Color)
+            if ($drawColor.IsEmpty) { $drawColor = [System.Drawing.Color]::LightGray }
+
+            # Escreve timestamp e categoria em cor neutra
+            $logTextBox.SelectionColor = [System.Drawing.Color]::WhiteSmoke
+            $logTextBox.AppendText("$ts ")
+            $logTextBox.AppendText("[$cat] ")
+
+            # Escreve apenas a mensagem na cor selecionada
+            $logTextBox.SelectionColor = $drawColor
+            $logTextBox.AppendText("$msg`r`n")
+        }
+        
+        $logTextBox.ResumeLayout()
+        
+        # Auto-scroll para o final do log
         $logTextBox.SelectionStart = $logTextBox.Text.Length
         $logTextBox.ScrollToCaret()
     } else {
         $logTextBox.Text = $script:LangData.StatusNoLog
     }
+    
+    # Alterna a visualização: Oculta o Grid, mostra o Log
     $dataGridView.Visible = $false
     $logTextBox.Visible = $true
     $statusLabel.Text = $script:LangData.StatusShowingLog
- })
+ }) 
 
 # --- Eventos dos Botões de Idioma ---
  $btnLangPT.Add_Click({

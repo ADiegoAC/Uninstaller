@@ -34,7 +34,7 @@
     "Phase2": "Fase 2: Calculando tamanhos profundos...",
     "Phase3": "Fase 3: Medindo pastas...",
     "PhaseExport": "Exportando JSON...",
-    "PhaseGrid": "Populando grade a partir do JSON...",
+    "PhaseGrid": "Populating grid from JSON...",
     "MsgEngineMissing": "O motor Un1nst4ll3r.ps1 não foi encontrado na mesma pasta da interface!",
     "StatusOrphan": "Órfão",
     "StatusNoLocation": "SemLocal",

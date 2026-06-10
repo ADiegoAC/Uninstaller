@@ -17,9 +17,9 @@ if ($PSVersionTable.PSVersion.Major -ge 7) {
     }
 }
 
-# Inicializa o acumulador global de logs de depuração
- $Global:Un1AnalysisLog = [System.Text.StringBuilder]::new()
-
+# Inicializa o acumulador global de logs de depuração (Agora como ArrayList para guardar cores)
+ $Global:Un1AnalysisLog = [System.Collections.ArrayList]::new()
+ 
 function Write-Un1Log {
     param (
         [string]$Category = "INFO",
@@ -29,13 +29,16 @@ function Write-Un1Log {
     
     $timestamp = Get-Date -Format "HH:mm:ss.fff"
     $formattedMessage = "$timestamp [$Category] $Message"
-    
-    # Exibe no terminal com cores
-    #Write-Host $formattedMessage -ForegroundColor $Color 
-    
-    # Alimenta a memória para a interface ler
+
+    # Não imprimir no terminal — somente armazenar no log global
     if ($null -ne $Global:Un1AnalysisLog) {
-        [void]$Global:Un1AnalysisLog.AppendLine($formattedMessage)
+        [void]$Global:Un1AnalysisLog.Add([PSCustomObject]@{
+            Timestamp = $timestamp
+            Category  = $Category
+            Message   = $Message
+            Color     = $Color
+            Text      = $formattedMessage
+        })
     }
     
     # Atualiza a SplashScreen da UI automaticamente, se existir
@@ -115,14 +118,14 @@ function Find-Un1nst4ll3rMainExe {
 
     $folderKeyword = (Split-Path $Path -Leaf) -replace '[\d\.]+', '' -replace '\s+', ''
     
-    Write-Un1Log -Category "EXE-FIND" -Message "Keywords: App='$firstKeyword' | Folder='$folderKeyword' | Block='$UninstallExeName'" -Color DarkGray
+    Write-Un1Log -Category "EXE-FIND" -Message "Keywords: App='$firstKeyword' | Folder='$folderKeyword' | Block='$UninstallExeName'" -Color Blue
 
     $searchPath = Join-Path $Path "*"
 
     # 1. Procura na Raiz
     $rootExes = Get-ChildItem -Path $searchPath -Filter "*.exe" -File -ErrorAction SilentlyContinue
     if ($rootExes.Count -gt 0) {
-        Write-Un1Log -Category "EXE-FIND" -Message "Root search: Found $($rootExes.Count) executables. Filtering..." -Color DarkGray
+        Write-Un1Log -Category "EXE-FIND" -Message "Root search: Found $($rootExes.Count) executables. Filtering..." -Color Blue
         
         $validExes = @($rootExes | Where-Object {
             $isBlacklisted = $false
@@ -171,7 +174,7 @@ function Find-Un1nst4ll3rMainExe {
         $subSearchPath = Join-Path $dir.FullName "*"
         $subExes = Get-ChildItem -Path $subSearchPath -Filter "*.exe" -File -ErrorAction SilentlyContinue
         if ($subExes.Count -gt 0) {
-            Write-Un1Log -Category "EXE-FIND" -Message "Subfolder '$($dir.Name)': Found $($subExes.Count) executables. Filtering..." -Color DarkGray
+            Write-Un1Log -Category "EXE-FIND" -Message "Subfolder '$($dir.Name)': Found $($subExes.Count) executables. Filtering..." -Color Blue
             
             $validSubExes = @($subExes | Where-Object {
                 $isBlacklisted = $false
@@ -270,43 +273,62 @@ function Find-Un1nst4ll3rOrphans {
     if ($null -eq $Global:MemoryMuiCache -or $Global:MemoryMuiCache.Count -eq 0) { $Global:MemoryMuiCache = Get-Un1nst4ll3rMuiCache }
     if ($null -eq $Global:MemoryShortcuts -or $Global:MemoryShortcuts.Count -eq 0) { $Global:MemoryShortcuts = Get-Un1nst4ll3rShortcutCache }
 
-    # Blacklist de pastas nativas do Windows (Recursos, não desinstaláveis via UI normal)
+    # Blacklist de pastas nativas do Windows (Recursos)
     $windowsNativePaths = @(
         "$env:windir\",
         "$env:ProgramFiles\Windows NT\",
         "$env:ProgramFiles\Windows Media Player\",
         "$env:ProgramFiles\Windows Photo Viewer\",
         "$env:ProgramFiles (x86)\Windows NT\",
-        "$env:ProgramFiles (x86)\Windows Media Player\",
-        "$env:ProgramFiles\Internet Explorer\"
-
+        "$env:ProgramFiles (x86)\Windows Media Player\"
     )
 
     foreach ($muiName in $Global:MemoryMuiCache.Keys) {
         $exePath = $Global:MemoryMuiCache[$muiName]
         
+        # Validação básica de existência
         if ([string]::IsNullOrWhiteSpace($exePath) -or !(Test-Path $exePath)) { continue }
-        if ($exePath -match '(\\Downloads\\|\\Desktop\\|\\Temp\\|\\\$Recycle.Bin\\)') { continue }
+        
+        # ======================================================================
+        # FILTRO 1: O EXE é um Setup/Instalador/Desinstalador? (Rejeita na raiz)
+        # Se o MuiCache aponta pra um setup.exe, isso NÃO é um app instalado.
+        # ======================================================================
+        $muiExeName = Split-Path $exePath -Leaf
+        $setupBlacklist = @('setup', 'install', 'uninstall', 'unins\d+', '-setup\.exe$', '-install\.exe$')
+        $isSetupFile = $false
+        foreach ($pattern in $setupBlacklist) {
+            if ($muiExeName -match $pattern) { $isSetupFile = $true; break }
+        }
+        if ($isSetupFile) {
+            Write-Un1Log -Category "ORPHAN" -Message "Skipped (Setup/Installer file): $muiExeName" -Color Blue
+            continue
+        }
+
+        # ======================================================================
+        # FILTRO 2: O CAMINHO é de Download/Temporário?
+        # ======================================================================
+        if ($exePath -match '(\\Downloads\\|\\Desktop\\|\\Temp\\|\\\$Recycle.Bin\\)') {
+            Write-Un1Log -Category "ORPHAN" -Message "Skipped (Invalid path): $exePath" -Color Blue
+            continue
+        }
         
         $installDir = Split-Path $exePath
         
         # DEDUPLICAÇÃO POR NOME
         if ($knownNames -contains $muiName) { continue }
 
-        # BLACKLIST DE RECURSOS DO WINDOWS
+        # BLACKLIST DE RECURSOS DO WINDOWS (WordPad, WMP, etc)
         $isWindowsFeature = $false
         foreach ($winPath in $windowsNativePaths) {
             if ($installDir.StartsWith($winPath, [System.StringComparison]::OrdinalIgnoreCase)) { $isWindowsFeature = $true; break }
         }
         if ($isWindowsFeature) { continue }
 
-        # DEDUPLICAÇÃO HIERÁRQUICA POR PASTA:
-        # Se o MuiCache aponta pra C:\Office\Root\Office16 e o Registro mapeou C:\Office\Root, é o mesmo app.
+        # DEDUPLICAÇÃO HIERÁRQUICA POR PASTA (Office, Proteus, VS)
         $isAlreadyMapped = $false
         $normCurrent = $installDir.TrimEnd('\').ToLower()
         foreach ($knownDir in $knownLocals) {
             $normKnown = $knownDir.TrimEnd('\').ToLower()
-            # Match exato OU um é subpasta do outro
             if ($normCurrent -eq $normKnown -or $normCurrent.StartsWith($normKnown + "\") -or $normKnown.StartsWith($normCurrent + "\")) {
                 $isAlreadyMapped = $true
                 break
@@ -314,9 +336,12 @@ function Find-Un1nst4ll3rOrphans {
         }
         if ($isAlreadyMapped) { continue }
         
-        # BUSCA DE UNINSTALLER (Agora mais profunda: Raiz + 1º nível de subpastas)
+        # ======================================================================
+        # VERIFICAÇÃO FINAL: Tem Uninstaller? (Só chega aqui se for um app real)
+        # ======================================================================
         $uninstallString = ""
         
+        # TENTATIVA 1: Procura no Disco (Raiz + 1 nível)
         $diskUninstallers = Get-ChildItem -Path $installDir -Filter "*.exe" -File -Recurse -Depth 1 -ErrorAction SilentlyContinue | Where-Object {
             $_.Name -match '^uninstall|^unins\d+'
         } | Select-Object -First 1
@@ -326,7 +351,7 @@ function Find-Un1nst4ll3rOrphans {
             Write-Un1Log -Category "ORPHAN" -Message "Uninstaller found via Disk Heuristic: $($diskUninstallers.FullName)" -Color Cyan
         }
         
-        # Fallback: Atalhos
+        # TENTATIVA 2: Atalhos
         if (!$uninstallString -and $Global:MemoryShortcuts.Count -gt 0) {
             $lnkUninstaller = $Global:MemoryShortcuts | Where-Object { 
                 $_.Target -like "$installDir*" -and $_.Target -match 'uninstall|unins\d+' -and $_.Target -match '\.exe$'
@@ -338,9 +363,9 @@ function Find-Un1nst4ll3rOrphans {
             }
         }
         
-        # REGRA FINAL: Sem uninstaller = não lista
+        # Se passou por tudo, mas não tem uninstall, aí sim rejeita como sem desinstalador
         if ([string]::IsNullOrWhiteSpace($uninstallString)) {
-            Write-Un1Log -Category "ORPHAN" -Message "Skipped (No valid uninstaller): $muiName" -Color DarkGray
+            Write-Un1Log -Category "ORPHAN" -Message "Skipped (No valid uninstaller): $muiName" -Color Blue
             continue
         }
 
@@ -396,7 +421,7 @@ function Get-Un1nst4ll3rScan {
             $items = Get-ItemProperty $path -ErrorAction SilentlyContinue
             foreach ($item in $items) {
                 if ($item.DisplayName -and !$item.SystemComponent -and !$item.ParentKeyName) {
-                    Write-Un1Log -Category "SCAN" -Message "Registry found: $($item.DisplayName)" -Color White
+                    Write-Un1Log -Category "SCAN" -Message "Registry found: $($item.DisplayName)" -Color Orange
                     
                     $installDir = $item.InstallLocation
                     $status = "NoLocation" 
@@ -450,7 +475,7 @@ function Get-Un1nst4ll3rScan {
             if ($isHidden -and $app.Publisher -match "Microsoft") { continue }
             if ($app.Publisher -match "Microsoft Windows") { continue }
 
-            Write-Un1Log -Category "SCAN" -Message "AppX found: $($app.Name)" -Color White
+            Write-Un1Log -Category "SCAN" -Message "AppX found: $($app.Name)" -Color Orange
             
             $displayName = $app.Name; $xmlDN = $manifest.Package.Properties.DisplayName; if ($xmlDN -and $xmlDN -notlike "ms-resource*") { $displayName = $xmlDN }
             $cleanPublisher = $app.Publisher; $xmlP = $manifest.Package.Properties.PublisherDisplayName; if ($xmlP -and $xmlP -notlike "ms-resource*") { $cleanPublisher = $xmlP } elseif ($cleanPublisher -match 'CN=([^,]+)') { $cleanPublisher = $matches[1] } elseif ($cleanPublisher -match '^[0-9a-fA-F]{8}-') { $cleanPublisher = "N/A" }
@@ -511,7 +536,7 @@ function Get-Un1nst4ll3rDeepSize {
     $invalidHeuristicRoots = @("microsoft", "windows apps", "common files", "dotnet", "reference assemblies")
 
     foreach ($prog in $ProgramList) {
-        Write-Un1Log -Category "LOCATE" -Message "--- Processing: $($prog.Nome) ---" -Color Cyan
+        Write-Un1Log -Category "LOCATE" -Message "Processing: $($prog.Nome) ---" -Color Cyan
 
         # ── PRIORIDADE 1: Json Pacotes Microsoft ──
         if ([string]::IsNullOrWhiteSpace($prog.Local)) {
@@ -569,7 +594,7 @@ function Get-Un1nst4ll3rDeepSize {
                 }
             } elseif ($muiExe -and !$isValidMuiExe) {
                  # Log avisando que o MuiCache tentou nos enganar, mas falhou!
-                 Write-Un1Log -Category "LOCATE" -Message "MuiCache rejected (Setup/Invalid path): $muiExe" -Color DarkGray
+                 Write-Un1Log -Category "LOCATE" -Message "MuiCache rejected (Setup/Invalid path): $muiExe" -Color Blue
             }
         }
 
@@ -722,7 +747,7 @@ function Get-Un1nst4ll3rDeepSize {
                     if ($foundDir) {
                         $leafNorm = $foundDir.Name.ToLower().Replace(" ", "")
                         if ($invalidHeuristicRoots -contains $leafNorm) {
-                            Write-Un1Log -Category "LOCATE" -Message "Heuristic rejected: '$($foundDir.Name)' is a generic root." -Color DarkGray
+                            Write-Un1Log -Category "LOCATE" -Message "Heuristic rejected: '$($foundDir.Name)' is a generic root." -Color Blue
                             continue
                         }
                         $guessedPath = $foundDir.FullName
@@ -753,7 +778,7 @@ function Get-Un1nst4ll3rDeepSize {
                 Write-Un1Log -Category "LOCATE" -Message "ExePath confirmed via Shortcut/MuiCache: $exeFromShortcut" -Color Green
             } elseif (![string]::IsNullOrWhiteSpace($prog.ExePath)) {
                 # Já temos um ExePath (provavelmente do Orphan Finder), mantemos ele
-                Write-Un1Log -Category "LOCATE" -Message "ExePath already resolved (pre-filled): $($prog.ExePath)" -Color DarkGray
+                Write-Un1Log -Category "LOCATE" -Message "ExePath already resolved (pre-filled): $($prog.ExePath)" -Color Blue
             } else {
                 # Roda a heurística pesada só se não tiver NADA
                 $uninstallExeName = if ($prog.UninstallString -match '\\([^\\]+\.exe)') { $Matches[1] } else { "" }
@@ -807,7 +832,7 @@ function Resolve-Un1nst4ll3rMicrosoftPackage {
                     Write-Un1Log -Category "MS-PKG" -Message "Location confirmed via JSON: $($Prog.Local)" -Color Cyan
                     return $true
                 } else {
-                    Write-Un1Log -Category "MS-PKG" -Message "Rule matched, but path missing: $expandedPath" -Color DarkGray
+                    Write-Un1Log -Category "MS-PKG" -Message "Rule matched, but path missing: $expandedPath" -Color Blue
                 }
             }
         } catch {
@@ -830,7 +855,7 @@ function Get-Un1nst4ll3rSizeEngine {
     Write-Un1Log -Category "SIZE" -Message "Starting Size Calculation Engine..." -Color Cyan
     $updatedList = [System.Collections.ArrayList]::new()
 
-    Write-Un1Log -Category "SIZE" -Message "Building MSI Installer UserData cache..." -Color DarkGray
+    Write-Un1Log -Category "SIZE" -Message "Building MSI Installer UserData cache..." -Color Blue
     $msiCache = @{}
     $msiRegPaths = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products\*\InstallProperties",
@@ -845,7 +870,7 @@ function Get-Un1nst4ll3rSizeEngine {
         }
     }
 
-    Write-Un1Log -Category "SIZE" -Message "Querying WMI InstalledWin32Program cache..." -Color DarkGray
+    Write-Un1Log -Category "SIZE" -Message "Querying WMI InstalledWin32Program cache..." -Color Blue
     $wmiCache = @{}
     try {
         Get-CimInstance Win32_InstalledWin32Program -ErrorAction Stop | Where-Object { $_.Name -and $_.Size -gt 0 } | ForEach-Object {
@@ -854,7 +879,7 @@ function Get-Un1nst4ll3rSizeEngine {
             }
         }
     } catch {
-        Write-Un1Log -Category "SIZE" -Message "WMI Win32_InstalledWin32Program not available." -Color DarkGray
+        Write-Un1Log -Category "SIZE" -Message "WMI Win32_InstalledWin32Program not available." -Color Blue
     }
 
     foreach ($prog in $ProgramList) {
@@ -893,7 +918,7 @@ function Get-Un1nst4ll3rSizeEngine {
 
             if ($isSafeToMeasure) {
                 try {
-                    Write-Un1Log -Category "SIZE" -Message "Measuring disk size (Safe I/O): $($prog.Local)" -Color DarkGray
+                    Write-Un1Log -Category "SIZE" -Message "Measuring disk size (Safe I/O): $($prog.Local)" -Color Blue
                     $bytes = (Get-ChildItem -Path $prog.Local -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
                     if ($bytes -gt 0) { 
                         $prog.Tamanho = [long]$bytes 
