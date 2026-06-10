@@ -474,29 +474,36 @@ $headerPanel.Height = 60
 $headerPanel.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
 $headerPanel.Padding = New-Object System.Windows.Forms.Padding(15)
 
+# Application Icon
+$formIcon = New-Object System.Windows.Forms.PictureBox
+$formIcon.Image = [System.Drawing.Image]::FromFile($(Join-Path $AppRoot "icon.ico"))
+$formIcon.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::StretchImage
+$formIcon.Size = New-Object System.Drawing.Size(32, 32)
+$formIcon.Location = New-Object System.Drawing.Point(20, 8)
+
 $titleLabel = New-Object System.Windows.Forms.Label
 $titleLabel.Text = $script:LangData.Title
 $titleLabel.Font = New-Object System.Drawing.Font("Consolas", 20, [System.Drawing.FontStyle]::Bold)
 $titleLabel.ForeColor = [System.Drawing.Color]::FromArgb(0, 191, 255)
 $titleLabel.AutoSize = $true
-$titleLabel.Location = New-Object System.Drawing.Point(15, 8)
+$titleLabel.Location = New-Object System.Drawing.Point(55, 8)
 
 $versionLabel = New-Object System.Windows.Forms.Label
 $versionLabel.Text = $script:LangData.Version
 $versionLabel.Font = New-Object System.Drawing.Font("Consolas", 9)
 $versionLabel.ForeColor = [System.Drawing.Color]::Gray
 $versionLabel.AutoSize = $true
-$versionLabel.Location = New-Object System.Drawing.Point(18, 44)
+$versionLabel.Location = New-Object System.Drawing.Point(20, 44)
 
-$headerPanel.Controls.AddRange(@($titleLabel, $versionLabel))
+$headerPanel.Controls.AddRange(@($titleLabel, $versionLabel, $formIcon))
 
 # ==========================================
 # 11. Actions Toolbar (Primary Buttons & Languages)
 # ==========================================
 $actionsPanel = New-Object System.Windows.Forms.Panel
 $actionsPanel.Dock = "Top"
-$actionsPanel.Height = 50
-$actionsPanel.BackColor = [System.Drawing.Color]::FromArgb(30, 20, 30)
+$actionsPanel.Height = 65
+$actionsPanel.BackColor = [System.Drawing.Color]::FromArgb(10, 20, 30)
 $actionsPanel.Padding = New-Object System.Windows.Forms.Padding(10, 5, 10, 5)
 
 # --- Primary Buttons (Blue Gradients, Black Text) ---
@@ -507,7 +514,7 @@ $btnScan.BackColor = [System.Drawing.Color]::FromArgb(15, 50, 120)
 $btnScan.ForeColor = [System.Drawing.Color]::Black
 $btnScan.FlatStyle = "Flat"
 $btnScan.Size = New-Object System.Drawing.Size(100, 35)
-$btnScan.Location = New-Object System.Drawing.Point(10, 7)
+$btnScan.Location = New-Object System.Drawing.Point(10,15)
 
 $btnDeepScan = New-Object System.Windows.Forms.Button
 $btnDeepScan.Text = $script:LangData.BtnNewScan
@@ -516,7 +523,7 @@ $btnDeepScan.BackColor = [System.Drawing.Color]::FromArgb(30, 80, 150)
 $btnDeepScan.ForeColor = [System.Drawing.Color]::Black
 $btnDeepScan.FlatStyle = "Flat"
 $btnDeepScan.Size = New-Object System.Drawing.Size(100, 35)
-$btnDeepScan.Location = New-Object System.Drawing.Point(120, 7)
+$btnDeepScan.Location = New-Object System.Drawing.Point(120, 15)
 
 $btnUninstall = New-Object System.Windows.Forms.Button
 $btnUninstall.Text = $script:LangData.BtnUninstall
@@ -525,7 +532,7 @@ $btnUninstall.BackColor = [System.Drawing.Color]::FromArgb(45, 110, 180)
 $btnUninstall.ForeColor = [System.Drawing.Color]::Black
 $btnUninstall.FlatStyle = "Flat"
 $btnUninstall.Size = New-Object System.Drawing.Size(100, 35)
-$btnUninstall.Location = New-Object System.Drawing.Point(230, 7)
+$btnUninstall.Location = New-Object System.Drawing.Point(230, 15)
 
 $btnCleanTraces = New-Object System.Windows.Forms.Button
 $btnCleanTraces.Text = $script:LangData.BtnCleanTraces
@@ -534,7 +541,7 @@ $btnCleanTraces.BackColor = [System.Drawing.Color]::FromArgb(60, 140, 210)
 $btnCleanTraces.ForeColor = [System.Drawing.Color]::Black
 $btnCleanTraces.FlatStyle = "Flat"
 $btnCleanTraces.Size = New-Object System.Drawing.Size(100, 35)
-$btnCleanTraces.Location = New-Object System.Drawing.Point(340, 7)
+$btnCleanTraces.Location = New-Object System.Drawing.Point(340, 15)
 
 $btnViewLog = New-Object System.Windows.Forms.Button
 $btnViewLog.Text = $script:LangData.BtnViewLog
@@ -543,7 +550,7 @@ $btnViewLog.BackColor = [System.Drawing.Color]::FromArgb(80, 170, 235)
 $btnViewLog.ForeColor = [System.Drawing.Color]::Black
 $btnViewLog.FlatStyle = "Flat"
 $btnViewLog.Size = New-Object System.Drawing.Size(100, 35)
-$btnViewLog.Location = New-Object System.Drawing.Point(450, 7)
+$btnViewLog.Location = New-Object System.Drawing.Point(450, 15)
 
 # --- Language Buttons (Positioned dynamically via listener) ---
 $btnLangPT = New-Object System.Windows.Forms.Button
@@ -553,7 +560,7 @@ $btnLangPT.BackColor = [System.Drawing.Color]::FromArgb(20, 60, 135)
 $btnLangPT.ForeColor = [System.Drawing.Color]::Black
 $btnLangPT.FlatStyle = "Flat"
 $btnLangPT.Size = New-Object System.Drawing.Size(30, 22)
-$btnLangPT.Top = 13
+$btnLangPT.Top = 38
 $btnLangPT.Left = 0
 
 $btnLangEN = New-Object System.Windows.Forms.Button
@@ -563,7 +570,7 @@ $btnLangEN.BackColor = [System.Drawing.Color]::FromArgb(45, 105, 175)
 $btnLangEN.ForeColor = [System.Drawing.Color]::Black
 $btnLangEN.FlatStyle = "Flat"
 $btnLangEN.Size = New-Object System.Drawing.Size(30, 22)
-$btnLangEN.Top = 13
+$btnLangEN.Top = 38
 $btnLangEN.Left = 0
 
 $btnLangES = New-Object System.Windows.Forms.Button
@@ -573,7 +580,7 @@ $btnLangES.BackColor = [System.Drawing.Color]::FromArgb(70, 150, 215)
 $btnLangES.ForeColor = [System.Drawing.Color]::Black
 $btnLangES.FlatStyle = "Flat"
 $btnLangES.Size = New-Object System.Drawing.Size(30, 22)
-$btnLangES.Top = 13
+$btnLangES.Top = 38
 $btnLangES.Left = 0
 
 $actionsPanel.Controls.AddRange(@($btnScan, $btnDeepScan, $btnUninstall, $btnCleanTraces, $btnViewLog, $btnLangPT, $btnLangEN, $btnLangES))
