@@ -32,7 +32,7 @@
 ## ⚙️ Technical Requirements  
 
 *   **OS**: Windows 8.1/10/11
-*   **Host**: **PowerShell 5.1 (Core) but 7.x is highly recommended for maximum performance.
+*   **Host**: **PowerShell 5.1** (Core) but 7.x is highly recommended for maximum performance.
 *   **Dependency**: Includes an auto-updater that utilizes **Winget** to keep your PowerShell environment up to date.(under maintenance)
 
 ---
