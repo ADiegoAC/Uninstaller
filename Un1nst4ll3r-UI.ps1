@@ -407,6 +407,17 @@ function Get-Un1nst4ll3rAppIcon {
  $form.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 30)
  $form.ForeColor = [System.Drawing.Color]::White
  $form.MinimumSize = New-Object System.Drawing.Size(1000, 400)
+ $icoFile = Join-Path $PSScriptRoot "icon.ico"
+ if (Test-Path $icoFile) {
+     try {
+         $form.Icon = New-Object System.Drawing.Icon($icoFile)
+     } catch {
+         $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($PSCommandPath)
+     }
+ } else {
+     $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($PSCommandPath)
+ }
+ 
 
 # ==========================================
 # 8. Cabeçalho
@@ -551,8 +562,8 @@ $dataGridView.EnableHeadersVisualStyles = $false
 
 $dataGridView.ColumnHeadersDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(40, 40, 40)
 $dataGridView.ColumnHeadersDefaultCellStyle.ForeColor = [System.Drawing.Color]::White
- $dataGridView.ColumnHeadersDefaultCellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(40, 40, 40)
- $dataGridView.ColumnHeadersDefaultCellStyle.SelectionForeColor = [System.Drawing.Color]::White
+$dataGridView.ColumnHeadersDefaultCellStyle.SelectionBackColor = [System.Drawing.Color]::FromArgb(40, 40, 40)
+$dataGridView.ColumnHeadersDefaultCellStyle.SelectionForeColor = [System.Drawing.Color]::White
 $dataGridView.ColumnHeadersDefaultCellStyle.Font = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Bold)
 
 $dataGridView.DefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
