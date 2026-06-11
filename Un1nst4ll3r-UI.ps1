@@ -1078,9 +1078,9 @@ $btnLangES.Add_Click({
 
 # --- Help Button Click Event ---
 $btnHelp.Add_Click({
-    $readmePath = Join-Path $AppRoot "README.md"
+    $readmePath = Join-Path $AppRoot "README_EN.rtf"
     if (!(Test-Path $readmePath)) {
-        [System.Windows.Forms.MessageBox]::Show("README.md not found in $AppRoot", "Error", "OK", "Error")
+        [System.Windows.Forms.MessageBox]::Show("README not found in $AppRoot", "Error", "OK", "Error")
         return
     }
 
@@ -1090,6 +1090,18 @@ $btnHelp.Add_Click({
     $helpForm.StartPosition = "CenterParent"
     $helpForm.BackColor = [System.Drawing.Color]::FromArgb(18, 18, 18)
     $helpForm.Icon = $form.Icon
+
+    $contentBox = New-Object System.Windows.Forms.RichTextBox
+    $contentBox.ReadOnly = $true
+    $contentBox.Dock = "Fill"
+    $contentBox.BackColor = [System.Drawing.Color]::FromArgb(220, 220, 220)
+    $contentBox.Font = New-Object System.Drawing.Font("Consolas", 8)
+    $contentBox.ScrollBars = "Vertical"
+    $contentBox.WordWrap = $true
+    $contentBox.Rtf = Get-Content -Path $readmePath -Raw -Encoding UTF8
+
+    $helpForm.Controls.Add($contentBox)
+    $helpForm.ShowDialog($form)
 
 })
 # --- About Button Click Event ---
