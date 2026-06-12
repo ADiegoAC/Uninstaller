@@ -1,6 +1,6 @@
 # ======================================================================
 #  Un1nst4ll3r - Motor de Varredura (Módulo)
-#  Versão: 4.1 (English Standardized Output)
+#  Versão: 3.1.1
 # ======================================================================
 
 # Força o terminal do Windows a usar UTF-8 para exibir acentos corretamente no console
@@ -280,18 +280,30 @@ function Find-Un1nst4ll3rOrphans {
         "$env:ProgramFiles\Windows Media Player\",
         "$env:ProgramFiles\Windows Photo Viewer\",
         "$env:ProgramFiles (x86)\Windows NT\",
-        "$env:ProgramFiles (x86)\Windows Media Player\"
+        "$env:ProgramFiles (x86)\Windows Media Player\",
+        "$env:ProgramFiles (x86)\Windows Photo Viewer\",
+        "$env:ProgramFiles\Windows Defender\",
+        "$env:ProgramFiles\Windows Mail\"
     )
 
     foreach ($muiName in $Global:MemoryMuiCache.Keys) {
-        $exePath = $Global:MemoryMuiCache[$muiName]
+        $muiData = $Global:MemoryMuiCache[$muiName]
+        
+        # CORREÇÃO: Desempacota o objeto se ele vier com ExePath e RegKeyName
+        if ($muiData -is [PSCustomObject] -and $muiData.PSObject.Properties.Name -contains 'ExePath') {
+            $exePath = $muiData.ExePath
+        } else {
+            $exePath = $muiData # Fallback de compatibilidade se for string
+        }
         
         # Validação básica de existência
-        if ([string]::IsNullOrWhiteSpace($exePath) -or !(Test-Path $exePath)) { continue }
+        if ([string]::IsNullOrWhiteSpace($exePath) -or !(Test-Path $exePath)) { 
+            Write-Un1Log -Category "ORPHAN" -Message "Skipped (ExePath missing or invalid): $muiName" -Color DarkGray
+            continue 
+        }
         
         # ======================================================================
         # FILTRO 1: O EXE é um Setup/Instalador/Desinstalador? (Rejeita na raiz)
-        # Se o MuiCache aponta pra um setup.exe, isso NÃO é um app instalado.
         # ======================================================================
         $muiExeName = Split-Path $exePath -Leaf
         $setupBlacklist = @('setup', 'install', 'uninstall', 'unins\d+', '-setup\.exe$', '-install\.exe$')
@@ -300,7 +312,7 @@ function Find-Un1nst4ll3rOrphans {
             if ($muiExeName -match $pattern) { $isSetupFile = $true; break }
         }
         if ($isSetupFile) {
-            Write-Un1Log -Category "ORPHAN" -Message "Skipped (Setup/Installer file): $muiExeName" -Color Blue
+            Write-Un1Log -Category "ORPHAN" -Message "Skipped (Setup/Installer file): $muiExeName" -Color DarkGray
             continue
         }
 
@@ -308,23 +320,29 @@ function Find-Un1nst4ll3rOrphans {
         # FILTRO 2: O CAMINHO é de Download/Temporário?
         # ======================================================================
         if ($exePath -match '(\\Downloads\\|\\Desktop\\|\\Temp\\|\\\$Recycle.Bin\\)') {
-            Write-Un1Log -Category "ORPHAN" -Message "Skipped (Invalid path): $exePath" -Color Blue
+            Write-Un1Log -Category "ORPHAN" -Message "Skipped (Invalid path): $exePath" -Color DarkGray
             continue
         }
         
         $installDir = Split-Path $exePath
         
-        # DEDUPLICAÇÃO POR NOME
-        if ($knownNames -contains $muiName) { continue }
+        # DEDUPLICAÇÃO POR NOME (LOG ADICIONADO)
+        if ($knownNames -contains $muiName) { 
+            Write-Un1Log -Category "ORPHAN" -Message "Skipped (Name already in Registry): $muiName" -Color DarkGray
+            continue 
+        }
 
-        # BLACKLIST DE RECURSOS DO WINDOWS (WordPad, WMP, etc)
+        # BLACKLIST DE RECURSOS DO WINDOWS (LOG ADICIONADO)
         $isWindowsFeature = $false
         foreach ($winPath in $windowsNativePaths) {
             if ($installDir.StartsWith($winPath, [System.StringComparison]::OrdinalIgnoreCase)) { $isWindowsFeature = $true; break }
         }
-        if ($isWindowsFeature) { continue }
+        if ($isWindowsFeature) { 
+            Write-Un1Log -Category "ORPHAN" -Message "Skipped (Windows native feature): $muiName" -Color DarkGray
+            continue 
+        }
 
-        # DEDUPLICAÇÃO HIERÁRQUICA POR PASTA (Office, Proteus, VS)
+        # DEDUPLICAÇÃO HIERÁRQUICA POR PASTA (LOG ADICIONADO)
         $isAlreadyMapped = $false
         $normCurrent = $installDir.TrimEnd('\').ToLower()
         foreach ($knownDir in $knownLocals) {
@@ -334,10 +352,13 @@ function Find-Un1nst4ll3rOrphans {
                 break
             }
         }
-        if ($isAlreadyMapped) { continue }
+        if ($isAlreadyMapped) { 
+            Write-Un1Log -Category "ORPHAN" -Message "Skipped (Folder already mapped by another app): $muiName ($installDir)" -Color DarkGray
+            continue 
+        }
         
         # ======================================================================
-        # VERIFICAÇÃO FINAL: Tem Uninstaller? (Só chega aqui se for um app real)
+        # VERIFICAÇÃO FINAL: Tem Uninstaller?
         # ======================================================================
         $uninstallString = ""
         
@@ -363,9 +384,9 @@ function Find-Un1nst4ll3rOrphans {
             }
         }
         
-        # Se passou por tudo, mas não tem uninstall, aí sim rejeita como sem desinstalador
+        # Se passou por tudo, mas não tem uninstall, rejeita como sem desinstalador
         if ([string]::IsNullOrWhiteSpace($uninstallString)) {
-            Write-Un1Log -Category "ORPHAN" -Message "Skipped (No valid uninstaller): $muiName" -Color Blue
+            Write-Un1Log -Category "ORPHAN" -Message "Skipped (No valid uninstaller): $muiName" -Color DarkGray
             continue
         }
 
@@ -505,7 +526,14 @@ function Get-Un1nst4ll3rScan {
             }) | Out-Null
         } catch {}
     }
-
+    
+    # ==========================================
+    # BLOCO 1.5: Descoberta de Apps sem Registro (Orphans)
+    # ==========================================
+    $orphanApps = Find-Un1nst4ll3rOrphans -ResolvedPrograms $installedPrograms
+    if ($orphanApps.Count -gt 0) {
+        $installedPrograms.AddRange($orphanApps)
+    }
     
     $resultList = $installedPrograms | Sort-Object Status, Nome -Unique
     Write-Un1Log -Category "SCAN" -Message "Scan complete. $($resultList.Count) valid applications found." -Color Green
@@ -555,23 +583,30 @@ function Get-Un1nst4ll3rDeepSize {
         if (!$guessedPath -and !$exeFromShortcut -and ![string]::IsNullOrWhiteSpace($prog.Nome) -and $Global:MemoryMuiCache.Count -gt 0) {
             
             # Tenta casar primeiro o nome exato
-            $muiExe = $Global:MemoryMuiCache[$prog.Nome]
+            $muiEntry = $Global:MemoryMuiCache[$prog.Nome]
             
             # Se não achou exato, tenta casar pelo nome limpo (sem versão)
-            if (!$muiExe) {
+            if (!$muiEntry) {
                 $safeAppName = $prog.Nome -replace '\(.*\)', '' -replace '\s+\d+.*', '' -replace '[^\w\s\-+]', ''
                 $safeAppName = $safeAppName.Trim()
                 if (![string]::IsNullOrWhiteSpace($safeAppName)) {
                     $matchKey = $Global:MemoryMuiCache.Keys | Where-Object { $_ -like "*$safeAppName*" -or $safeAppName -like "*$_*" } | Select-Object -First 1
-                    if ($matchKey) { $muiExe = $Global:MemoryMuiCache[$matchKey] }
+                    if ($matchKey) { $muiEntry = $Global:MemoryMuiCache[$matchKey] }
                 }
+            }
+
+            # CORREÇÃO: Desempacota o objeto se ele vier com ExePath e RegKeyName
+            $muiExe = $null
+            if ($muiEntry -is [PSCustomObject] -and $muiEntry.PSObject.Properties.Name -contains 'ExePath') {
+                $muiExe = $muiEntry.ExePath
+            } else {
+                $muiExe = $muiEntry # Fallback de compatibilidade se for string
             }
 
             # Validação Crucial: Rejeita instaladores, desinstaladores e pastas temporárias
             $isValidMuiExe = $true
             if ($muiExe) {
-                $muiExeName = Split-Path $muiExe -Leaf
-                
+                $muiExeName = Split-Path $muiExe -Leaf                
                 # 1. Rejeita se o NOME do arquivo for de setup/uninstall
                 $setupBlacklist = @('setup', 'install', 'uninstall', 'unins\d+', '-setup\.exe$', '-install\.exe$')
                 foreach ($pattern in $setupBlacklist) {
@@ -778,7 +813,7 @@ function Get-Un1nst4ll3rDeepSize {
                 Write-Un1Log -Category "LOCATE" -Message "ExePath confirmed via Shortcut/MuiCache: $exeFromShortcut" -Color Green
             } elseif (![string]::IsNullOrWhiteSpace($prog.ExePath)) {
                 # Já temos um ExePath (provavelmente do Orphan Finder), mantemos ele
-                Write-Un1Log -Category "LOCATE" -Message "ExePath already resolved (pre-filled): $($prog.ExePath)" -Color Blue
+                Write-Un1Log -Category "LOCATE" -Message "ExePath already resolved (pre-filled): $($prog.ExePath)" -Color DarkGray
             } else {
                 # Roda a heurística pesada só se não tiver NADA
                 $uninstallExeName = if ($prog.UninstallString -match '\\([^\\]+\.exe)') { $Matches[1] } else { "" }

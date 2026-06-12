@@ -1,16 +1,14 @@
 # ======================================================================
-#  Un1nst4ll3r - Graphical User Interface (Chapter 2)
-#  Version: 1.5 (Multi-Language & UI Refinements)
+#  Un1nst4ll3r - Interface Gráfica (Capítulo 2)
+#  Versão: 1.5 (Multi-Language & UI Refinements)
 # ======================================================================
 
-# Forces the Windows terminal to use UTF-8 to display accents correctly
+# Força o terminal do Windows a usar UTF-8 para exibir acentos corretamente no console
 #[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 #[Console]::InputEncoding = [System.Text.Encoding]::UTF8
-#$OutputEncoding = [System.Text.Encoding]::UTF8
+ #$OutputEncoding = [System.Text.Encoding]::UTF8
 
-# ==========================================
-# 1. DPI Awareness Trick (Prevents blurry UI on high DPI screens)
-# ==========================================
+# 1. Truque de DPI Awareness
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -19,64 +17,25 @@ public class DpiHelper {
     public static extern bool SetProcessDPIAware();
 }
 '@
-[void][DpiHelper]::SetProcessDPIAware()
+[DpiHelper]::SetProcessDPIAware()
 
-# ==========================================
-# 2. Smart Directory Detection (Fixes PS2EXE %TEMP% issue)
-# ==========================================
-$exePath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
-$exeName = [System.IO.Path]::GetFileNameWithoutExtension($exePath)
-
-if ($exeName -match '^(pwsh|powershell|powershell_ise|WindowsTerminal)$') {
-    # Running as a native .ps1 script
-    $AppRoot = $PSScriptRoot
-} else {
-    # Compiled as an EXE (Gets the folder where the .exe is actually located)
-    $AppRoot = [System.IO.Path]::GetDirectoryName($exePath)
-}
-
-# ==========================================
-# 3. Load Required .NET Assemblies
-# ==========================================
+# 2. Carregar Assemblies
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# ==========================================
-# 4. Import the Un1nst4ll3r Engine
-# ==========================================
-$enginePath = Join-Path $AppRoot "Un1nst4ll3r.ps1"
+# 3. Importar o Motor
+ $enginePath = Join-Path $PSScriptRoot "Un1nst4ll3r.ps1"
 if (Test-Path $enginePath) {
     . $enginePath
 } else {
-    [System.Windows.Forms.MessageBox]::Show("Engine Un1nst4ll3r.ps1 not found in $AppRoot!", "Critical Error", "OK", "Error")
+    [System.Windows.Forms.MessageBox]::Show("Engine Un1nst4ll3r.ps1 not found!", "Critical Error", "OK", "Error")
     exit
 }
 
-# Load Markdown Viewer Library if present (Moved after Engine import to allow logging)
-$mdViewerDll = Join-Path $AppRoot "MdViewer.dll"
-$commonMarkDll = Join-Path $AppRoot "CommonMark.dll"
-
-if ((Test-Path $mdViewerDll) -and (Test-Path $commonMarkDll)) {
-    try {
-        # Unblock files to prevent silent load failures due to Windows security "Zone.Identifier"
-        Unblock-File -Path $commonMarkDll, $mdViewerDll -ErrorAction SilentlyContinue
-
-        # Load using Reflection into the Load context to ensure dependencies are resolved
-        [System.Reflection.Assembly]::LoadFrom($commonMarkDll) | Out-Null
-        [System.Reflection.Assembly]::LoadFrom($mdViewerDll) | Out-Null
-        
-        Write-Un1Log -Category "INIT" -Message "Markdown Viewer library loaded successfully." -Color Green
-    } catch {
-        Write-Un1Log -Category "INIT" -Message "Markdown library failed to load: $($_.Exception.Message)" -Color Red
-    }
-}
-
-# ==========================================
-# 5. Multi-Language System Setup
-# ==========================================
-$script:langPath = Join-Path $AppRoot "Un1nst4ll3r_Lang.json"
-$script:CurrentLang = "pt-BR"
-$script:LangData = $null
+# 4. Sistema de Multi-Idioma
+ $script:langPath = Join-Path $PSScriptRoot "Un1nst4ll3r_Lang.json"
+ $script:CurrentLang = "pt-BR"
+ $script:LangData = $null
 
 if (Test-Path $script:langPath) {
     try {
@@ -87,15 +46,14 @@ if (Test-Path $script:langPath) {
         [System.Windows.Forms.MessageBox]::Show("Error reading language JSON!", "Error", "OK", "Warning")
     }
 } else {
-    [System.Windows.Forms.MessageBox]::Show("Un1nst4ll3r_Lang.json not found in $AppRoot!", "Error", "OK", "Warning")
+    [System.Windows.Forms.MessageBox]::Show("Un1nst4ll3r_Lang.json not found!", "Error", "OK", "Warning")
 }
 
-# Fallback definitions in case the JSON read fails entirely
+# Fallback caso o JSON falhe
 if ($null -eq $script:LangData) {
     $script:LangData = [PSCustomObject]@{
         Title = "Un1nst4ll3r"; Version = "v2.2"; BtnScanList = "SCAN LIST"; BtnNewScan = "NEW SCAN"
         BtnUninstall = "UNINSTALL"; BtnCleanTraces = "CLEAN TRACES"; BtnViewLog = "VIEW LOG"
-        BtnHelp = "HELP"; BtnAbout = "ABOUT"
         ColName = "Nome"; ColVersion = "Versao"; ColManufacturer = "Fabricante"; ColSize = "Tamanho"
         ColType = "Tipo"; ColLocation = "Local"; ColStatus = "Status"
         StatusReady = "Ready."; StatusNoCache = "No cache. Click SCAN LIST."; StatusLoadingCache = "Loading cache..."
@@ -110,15 +68,15 @@ if ($null -eq $script:LangData) {
 }
 
 # ==========================================
-# 6. PowerShell 7 Verification & Auto-Updater
+# 4.5 Verificação e Atualização do PowerShell 7
 # ==========================================
 function Test-AndInstallPowerShell7 {
-    # Exit function if already running PS7+
+    # Se já for PS7+, sai da função e deixa o app rodar normal
     if ($PSVersionTable.PSVersion.Major -ge 7) { return }
 
     $L = $script:LangData
 
-    # --- PROMPT DIALOG (Styled Form) ---
+    # --- DIALOG DE PERGUNTA (Estilizada) ---
     $promptForm = New-Object System.Windows.Forms.Form
     $promptForm.Text = $L.UpdateRequiredTitle
     $promptForm.Size = New-Object System.Drawing.Size(450, 200)
@@ -157,22 +115,23 @@ function Test-AndInstallPowerShell7 {
     $btnNo.DialogResult = [System.Windows.Forms.DialogResult]::No
 
     $promptForm.Controls.AddRange(@($promptLabel, $btnYes, $btnNo))
+
     $result = $promptForm.ShowDialog()
 
     if ($result -ne [System.Windows.Forms.DialogResult]::Yes) {
         [System.Windows.Forms.MessageBox]::Show($L.UpdateDeclined, $L.Title, "OK", "Warning")
-        exit # Terminate application
+        exit # Fecha o app
     }
     $promptForm.Dispose()
 
-    # --- WINGET EXISTENCE CHECK ---
+    # --- VERIFICA SE WINGET EXISTE ---
     $wingetExe = Get-Command winget.exe -ErrorAction SilentlyContinue
     if (!$wingetExe) {
         [System.Windows.Forms.MessageBox]::Show($L.UpdateWingetNotFound, $L.Title, "OK", "Error")
         exit
     }
 
-    # --- INSTALLATION MINI-TERMINAL (Styled UI) ---
+    # --- MINI-TERMINAL DE INSTALAÇÃO (Estilizado) ---
     $updateForm = New-Object System.Windows.Forms.Form
     $updateForm.Text = $L.UpdateProgressTitle
     $updateForm.Size = New-Object System.Drawing.Size(600, 350)
@@ -201,21 +160,20 @@ function Test-AndInstallPowerShell7 {
     $terminalBox.Multiline = $true
     $terminalBox.ReadOnly = $true
     $terminalBox.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
-    $terminalBox.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 100) # Cyberpunk green terminal text
+    $terminalBox.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 100) # Verde terminal
     $terminalBox.Font = New-Object System.Drawing.Font("Consolas", 8)
     $terminalBox.Size = New-Object System.Drawing.Size(540, 180)
     $terminalBox.Location = New-Object System.Drawing.Point(20, 80)
     $terminalBox.ScrollBars = "Vertical"
-    $terminalBox.BorderStyle = [System.Windows.Forms.BorderStyle]::None
-    
-    # Prevents the annoying "beep" sound when pressing Enter while the terminal is focused
+    $terminalBox.BorderStyle = [System.Windows.Forms.BorderStyle]::None # Deixa mais cybertnico
+    # Evita o som irritante de "beep" ao apertar Enter com ele focado
     $terminalBox.Add_KeyDown({ if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Enter) { $_.SuppressKeyPress = $true } })
     
     $updateForm.Controls.AddRange(@($updateTitle, $updateSub, $terminalBox))
     $updateForm.Show()
     [System.Windows.Forms.Application]::DoEvents()
 
-    # --- BACKGROUND INSTALLATION PROCESS ---
+    # --- PROCESSO DE INSTALAÇÃO EM BACKGROUND ---
     $installSuccess = $false
     try {
         $proc = New-Object System.Diagnostics.Process
@@ -228,34 +186,35 @@ function Test-AndInstallPowerShell7 {
         
         $proc.Start() | Out-Null
 
-        # Reads standard output stream in real-time without freezing the main UI thread
+        # Lê a saída em tempo real sem travar a UI
         while (!$proc.StandardOutput.EndOfStream) {
             $rawLine = $proc.StandardOutput.ReadLine()
             
-            # 1. Strip ANSI color codes (e.g., [32m) injected by Winget
+            # 1. Remove códigos de cor ANSI (ex: [32m) que o Winget usa e que sujam o texto
             $cleanLine = $rawLine -replace '\x1b\[[0-9;]*[a-zA-Z]', ''
             
-            # 2. Handle carriage returns (\r). Winget uses this to overwrite the same line for progress bars
+            # 2. O Winget usa \r para sobrescrever a mesma linha. Se vier tudo de uma vez, pegamos apenas a última "atualização"
             if ($cleanLine -match '\r') {
                 $cleanLine = ($cleanLine -split '\r')[-1]
             }
             
             $line = $cleanLine.TrimEnd()
 
-            # Ignore empty lines after cleanup
+            # Ignora linhas completamente vazias após a limpeza
             if ([string]::IsNullOrWhiteSpace($line)) { 
                 [System.Windows.Forms.Application]::DoEvents()
                 continue 
             }
 
-            # 3. Progress detection via Regex (spinners, percentages, unicode blocks, or asterisks)
-            $isProgress = $line -match '[-|/\\]\s*$' -or `
-                          $line -match '\d+\s*%' -or `
-                          $line -match '\[=+[^\]]*\]' -or `
-                          $line -match '^\s*\*{2,}'
+            # 3. Regex MELHORADA: Detecta spinners (-, |, /, \), porcentagens, blocos unicode (█░) e barras [====]
+            $isProgress = $line -match '[-|/\\]\s*$' -or `          # Spinner no final da linha
+                          $line -match '\d+\s*%' -or `             # Porcentagem (ex: 50 %)
+                          #$line -match '[█░▓▒■□▪▫]' -or `          # Barras de bloco (unicode)
+                          $line -match '\[=+[^\]]*\]' -or `        # Barras estilo [====]
+                          $line -match '^\s*\*{2,}'                # Múltiplos asteriscos
             
             if ($isProgress) {
-                # Overwrite the last line for progress animations
+                # Sobrescreve a última linha (animação/progresso)
                 if ($terminalBox.Text.Length -gt 0) {
                     $lastNewLine = $terminalBox.Text.LastIndexOf("`n")
                     if ($lastNewLine -ge 0) {
@@ -268,16 +227,16 @@ function Test-AndInstallPowerShell7 {
                 }
                 $terminalBox.SelectedText = $line
             } else {
-                # Normal log line, append with line break
+                # Texto normal de log, adiciona com quebra de linha
                 $terminalBox.AppendText("$line`n")
             }
             
-            # Force auto-scroll to the bottom
+            # Auto-scroll forçado para o final do texto
             $terminalBox.SelectionStart = $terminalBox.TextLength
             $terminalBox.SelectionLength = 0
             $terminalBox.ScrollToCaret()
             
-            # Allow the GUI to process events (breathe)
+            # Permite que a interface gráfica respire
             [System.Windows.Forms.Application]::DoEvents()
         }
 
@@ -285,9 +244,10 @@ function Test-AndInstallPowerShell7 {
         $installSuccess = ($proc.ExitCode -eq 0)
     }
     catch {
-        $terminalBox.AppendText("ERROR: $($_.Exception.Message)`r`n")
+        $terminalBox.AppendText("ERRO: $($_.Exception.Message)`r`n")
         $installSuccess = $false
     }
+
 
     if ($installSuccess) {
         $terminalBox.AppendText("`r`n" + $L.UpdateSuccess)
@@ -295,11 +255,11 @@ function Test-AndInstallPowerShell7 {
         Start-Sleep -Seconds 3
         $updateForm.Close()
 
-        # Locate the newly installed pwsh.exe
-        # PRIORITY 1: Get-Command (Resolves automatically via Windows PATH)
+        # Tenta encontrar o pwsh.exe recém instalado
+        # PRIORIDADE 1: Get-Command (Resolve automático via PATH do Windows, pega da Store, Winget, MSI)
         $pwshExe = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
         
-        # PRIORITY 2: Direct folder fallback (In case PATH hasn't updated in the current session)
+        # PRIORIDADE 2: Fallback direto nas pastas do sistema (se o PATH não atualizou na mesma hora)
         if ([string]::IsNullOrWhiteSpace($pwshExe)) {
             $pwshPaths = @(
                 "$env:ProgramFiles\PowerShell\7\pwsh.exe",
@@ -310,7 +270,7 @@ function Test-AndInstallPowerShell7 {
         }
 
         if ($pwshExe) {
-            # AUTO-RELAUNCH: The script terminates and restarts itself using the new PowerShell 7 executable
+            # AUTO-RELAUNCH: O script se encerra e reabre usando o novo PowerShell 7
             Start-Process $pwshExe -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`""
             exit
         } else {
@@ -324,42 +284,34 @@ function Test-AndInstallPowerShell7 {
     }
 }
 
-# Uncomment the line below to enable auto-update. Keep commented if building with PS2EXE.
 #Test-AndInstallPowerShell7
 
-# ==========================================
-# 7. Local Cache and System Package Bank Paths
-# ==========================================
-$script:jsonPath = Join-Path $AppRoot "Un1nst4ll3r_ScanResult.json"
-$script:sysBankPath = Join-Path $AppRoot "Un1nst4ll3r_SysPkgBank.json"
-$Global:SysPkgBank = @()
-
-if (Test-Path $script:sysBankPath) {
+# 5. Caminhos de Cache e Banco de Sistema
+ $script:jsonPath = Join-Path $PSScriptRoot "Un1nst4ll3r_ScanResult.json"
+ $script:sysBankPath = Join-Path $PSScriptRoot "Un1nst4ll3r_SysPkgBank.json"
+ $Global:SysPkgBank = @()
+ if (Test-Path $script:sysBankPath) {
     try {
         $sysBankRaw = [System.IO.File]::ReadAllText($script:sysBankPath, [System.Text.Encoding]::UTF8)
         $Global:SysPkgBank = ConvertFrom-Json -InputObject $sysBankRaw
     } catch {}
-} 
+ } 
 
 # ==========================================
-# Helper Function: Extract Application Icon
+# Função Auxiliar: Extrair Ícone do App
 # ==========================================
 function Get-Un1nst4ll3rAppIcon {
     param ([string]$AppName, [string]$IconPath, [string]$ExePath, [string]$InstallLocal)
 
-    # Inner helper to safely extract icons from files
     function Test-ExtractIcon {
         param ([string]$FilePath)
         if ([string]::IsNullOrWhiteSpace($FilePath)) { return $null }
         try {
             $cleanPath = $FilePath
-            # Remove trailing indexes from icon paths (e.g., C:\app.exe,0)
             if ($cleanPath -match '^(.+?),(-?\d+)$') { $cleanPath = $Matches[1] }
             if (Test-Path $cleanPath -ErrorAction SilentlyContinue) {
                 $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($cleanPath)
                 if ($null -ne $icon) { return $icon.ToBitmap() }
-                
-                # Fallback for standard .ico files
                 if ($cleanPath -match '\.ico$') {
                     $icon = New-Object System.Drawing.Icon($cleanPath)
                     if ($null -ne $icon) { return $icon.ToBitmap() }
@@ -369,7 +321,6 @@ function Get-Un1nst4ll3rAppIcon {
         return $null
     }
 
-    # Strategy 1: Attempt to use the DisplayIcon registry path directly
     if (![string]::IsNullOrWhiteSpace($IconPath)) {
         if (Test-Path $IconPath -ErrorAction SilentlyContinue) {
             $bmp = Test-ExtractIcon $IconPath
@@ -377,7 +328,6 @@ function Get-Un1nst4ll3rAppIcon {
         }
     }
 
-    # Strategy 2: Attempt to pull icon from matched memory shortcuts
     if (![string]::IsNullOrWhiteSpace($AppName) -and $null -ne $Global:MemoryShortcuts -and $Global:MemoryShortcuts.Count -gt 0) {
         $safeAppName = $AppName -replace '\(.*\)', '' -replace '\s+\d+.*', '' -replace '[^\w\s\-+]', ''
         $safeAppName = $safeAppName.Trim()
@@ -386,7 +336,6 @@ function Get-Un1nst4ll3rAppIcon {
                 ($_.LnkName -like "*$safeAppName*" -or $safeAppName -like "*$($_.LnkName)*" -or $_.LnkName -like "*$AppName*") -and
                 $_.Target -notmatch 'uninstall|unins\d+|setup' -and $_.Target -notmatch '\.(url|html?|website)$'
             } | Select-Object -First 1
-            
             if ($lnkMatch -and (Test-Path $lnkMatch.Target -ErrorAction SilentlyContinue)) {
                 $bmp = Test-ExtractIcon $lnkMatch.Target
                 if ($bmp) { return $bmp }
@@ -394,7 +343,6 @@ function Get-Un1nst4ll3rAppIcon {
         }
     }
 
-    # Strategy 3: Attempt to resolve icon through the System Package Bank rules
     if (![string]::IsNullOrWhiteSpace($AppName) -and $Global:SysPkgBank.Count -gt 0) {
         foreach ($rule in $Global:SysPkgBank) {
             try {
@@ -407,15 +355,10 @@ function Get-Un1nst4ll3rAppIcon {
         }
     }
 
-    # Define a blacklist to avoid grabbing uninstaller/helper icons
     $icoBlacklist = @('^uninstall', '^unins\d+', '^setup', '^remove', '^help', 'update$')
-    
-    # Strategy 4: Extract from discovered ExePath
     if (![string]::IsNullOrWhiteSpace($ExePath) -and (Test-Path $ExePath -ErrorAction SilentlyContinue)) {
         $exeDir = Split-Path $ExePath
         $isSubprocess = (![string]::IsNullOrWhiteSpace($InstallLocal) -and $exeDir -ne $InstallLocal)
-        
-        # If the ExePath is in a subdirectory (like /bin), search the root install dir for an .ico first
         if ($isSubprocess -and (Test-Path $InstallLocal -ErrorAction SilentlyContinue)) {
             $rootIcos = @(Get-ChildItem -Path $InstallLocal -Filter "*.ico" -File -ErrorAction SilentlyContinue | Where-Object {
                 $bl = $false; foreach ($p in $icoBlacklist) { if ($_.Name -match $p) { $bl = $true; break } }; -not $bl
@@ -428,21 +371,16 @@ function Get-Un1nst4ll3rAppIcon {
                 if ($bmp) { return $bmp }
             }
         }
-        
-        # Fallback to extracting straight from the executable
         $bmp = Test-ExtractIcon $ExePath
         if ($bmp) { return $bmp }
     }
 
-    # Strategy 5: Deep search within the Install Location for any valid .ico file
     if (![string]::IsNullOrWhiteSpace($InstallLocal) -and (Test-Path $InstallLocal -ErrorAction SilentlyContinue)) {
         $icoFiles = @(Get-ChildItem -Path $InstallLocal -Filter "*.ico" -File -ErrorAction SilentlyContinue)
         $icoFiles += @(Get-ChildItem -Path "$InstallLocal\*\*.ico" -File -ErrorAction SilentlyContinue)
-        
         $validIcos = @($icoFiles | Where-Object {
             $bl = $false; foreach ($p in $icoBlacklist) { if ($_.Name -match $p) { $bl = $true; break } }; -not $bl
         })
-        
         if ($validIcos.Count -gt 0) {
             $safeAppName = $AppName -replace '\(.*\)', '' -replace '\s+\d+.*', '' -replace '[^\w\s\-+]', ''
             $mainIco = $validIcos | Where-Object { $_.BaseName -like "*$safeAppName*" } | Select-Object -First 1
@@ -451,29 +389,25 @@ function Get-Un1nst4ll3rAppIcon {
             if ($bmp) { return $bmp }
         }
     }
-    
-    # Return a blank 32x32 bitmap if all icon extraction strategies fail
     return New-Object System.Drawing.Bitmap(32, 32)
 }
 
-# ==========================================
-# 8. Calculate Responsive Window Dimensions
-# ==========================================
-$screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-$formWidth = [int]($screen.Width * 1)
-$formHeight = [int]($screen.Height * 1.01)
+# 6. Calcular tamanho da janela
+ $screen = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+ $formWidth = [int]($screen.Width * 1)
+ $formHeight = [int]($screen.Height * 1.01)
 
 # ==========================================
-# 9. Main Form Creation
+# 7. Criação da Janela Principal
 # ==========================================
-$form = New-Object System.Windows.Forms.Form
-$form.Text = $script:LangData.Title
-$form.Size = New-Object System.Drawing.Size($formWidth, $formHeight)
-$form.StartPosition = "CenterScreen"
-$form.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 30)
-$form.ForeColor = [System.Drawing.Color]::White
-$form.MinimumSize = New-Object System.Drawing.Size(1000, 400)
-$icoFile = Join-Path $AppRoot "icon.ico"
+ $form = New-Object System.Windows.Forms.Form
+ $form.Text = $script:LangData.Title
+ $form.Size = New-Object System.Drawing.Size($formWidth, $formHeight)
+ $form.StartPosition = "CenterScreen"
+ $form.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 30)
+ $form.ForeColor = [System.Drawing.Color]::White
+ $form.MinimumSize = New-Object System.Drawing.Size(1000, 400)
+ $icoFile = Join-Path $PSScriptRoot "icon.ico"
  if (Test-Path $icoFile) {
      try {
          $form.Icon = New-Object System.Drawing.Icon($icoFile)
@@ -483,168 +417,144 @@ $icoFile = Join-Path $AppRoot "icon.ico"
  } else {
      $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($PSCommandPath)
  }
-
-
-# ==========================================
-# 10. Header Panel
-# ==========================================
-$headerPanel = New-Object System.Windows.Forms.Panel
-$headerPanel.Dock = "Top"
-$headerPanel.Height = 60
-$headerPanel.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
-$headerPanel.Padding = New-Object System.Windows.Forms.Padding(15)
-
-# Application Icon
-$formIcon = New-Object System.Windows.Forms.PictureBox
-$formIcon.Image = [System.Drawing.Image]::FromFile($(Join-Path $AppRoot "icon.ico"))
-$formIcon.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::StretchImage
-$formIcon.Size = New-Object System.Drawing.Size(32, 32)
-$formIcon.Location = New-Object System.Drawing.Point(20, 8)
-
-$titleLabel = New-Object System.Windows.Forms.Label
-$titleLabel.Text = $script:LangData.Title
-$titleLabel.Font = New-Object System.Drawing.Font("Consolas", 20, [System.Drawing.FontStyle]::Bold)
-$titleLabel.ForeColor = [System.Drawing.Color]::FromArgb(0, 191, 255)
-$titleLabel.AutoSize = $true
-$titleLabel.Location = New-Object System.Drawing.Point(55, 8)
-
-$versionLabel = New-Object System.Windows.Forms.Label
-$versionLabel.Text = $script:LangData.Version
-$versionLabel.Font = New-Object System.Drawing.Font("Consolas", 9)
-$versionLabel.ForeColor = [System.Drawing.Color]::Gray
-$versionLabel.AutoSize = $true
-$versionLabel.Location = New-Object System.Drawing.Point(20, 44)
-
-# --- Help and About Buttons ---
-$btnHelp = New-Object System.Windows.Forms.Button
-$btnHelp.Text = $script:LangData.BtnHelp
-$btnHelp.Font = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Bold)
-$btnHelp.BackColor = [System.Drawing.Color]::FromArgb(60, 60, 60)
-$btnHelp.ForeColor = [System.Drawing.Color]::Black
-$btnHelp.FlatStyle = "Flat"
-$btnHelp.Size = New-Object System.Drawing.Size(55, 20)
-$btnHelp.Top = 12
-
-$btnAbout = New-Object System.Windows.Forms.Button
-$btnAbout.Text = $script:LangData.BtnAbout
-$btnAbout.Font = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Bold)
-$btnAbout.BackColor = [System.Drawing.Color]::FromArgb(60, 60, 60)
-$btnAbout.ForeColor = [System.Drawing.Color]::Black
-$btnAbout.FlatStyle = "Flat"
-$btnAbout.Size = New-Object System.Drawing.Size(55, 20)
-$btnAbout.Top = 12
-
-$headerPanel.Controls.AddRange(@($titleLabel, $versionLabel, $formIcon, $btnHelp, $btnAbout))
+ 
 
 # ==========================================
-# 11. Actions Toolbar (Primary Buttons & Languages)
+# 8. Cabeçalho
 # ==========================================
-$actionsPanel = New-Object System.Windows.Forms.Panel
-$actionsPanel.Dock = "Top"
-$actionsPanel.Height = 65
-$actionsPanel.BackColor = [System.Drawing.Color]::FromArgb(10, 20, 30)
-$actionsPanel.Padding = New-Object System.Windows.Forms.Padding(10, 5, 10, 5)
+ $headerPanel = New-Object System.Windows.Forms.Panel
+ $headerPanel.Dock = "Top"
+ $headerPanel.Height = 60
+ $headerPanel.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
+ $headerPanel.Padding = New-Object System.Windows.Forms.Padding(15)
 
-# --- Primary Buttons (Blue Gradients, Black Text) ---
-$btnScan = New-Object System.Windows.Forms.Button
-$btnScan.Text = $script:LangData.BtnScanList
-$btnScan.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
-$btnScan.BackColor = [System.Drawing.Color]::FromArgb(15, 50, 120)
-$btnScan.ForeColor = [System.Drawing.Color]::Black
-$btnScan.FlatStyle = "Flat"
-$btnScan.Size = New-Object System.Drawing.Size(100, 35)
-$btnScan.Location = New-Object System.Drawing.Point(10,15)
+ $titleLabel = New-Object System.Windows.Forms.Label
+ $titleLabel.Text = $script:LangData.Title
+ $titleLabel.Font = New-Object System.Drawing.Font("Consolas", 20, [System.Drawing.FontStyle]::Bold)
+ $titleLabel.ForeColor = [System.Drawing.Color]::FromArgb(0, 191, 255)
+ $titleLabel.AutoSize = $true
+ $titleLabel.Location = New-Object System.Drawing.Point(15, 8)
 
-$btnDeepScan = New-Object System.Windows.Forms.Button
-$btnDeepScan.Text = $script:LangData.BtnNewScan
-$btnDeepScan.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
-$btnDeepScan.BackColor = [System.Drawing.Color]::FromArgb(30, 80, 150)
-$btnDeepScan.ForeColor = [System.Drawing.Color]::Black
-$btnDeepScan.FlatStyle = "Flat"
-$btnDeepScan.Size = New-Object System.Drawing.Size(100, 35)
-$btnDeepScan.Location = New-Object System.Drawing.Point(120, 15)
+ $versionLabel = New-Object System.Windows.Forms.Label
+ $versionLabel.Text = $script:LangData.Version
+ $versionLabel.Font = New-Object System.Drawing.Font("Consolas", 9)
+ $versionLabel.ForeColor = [System.Drawing.Color]::Gray
+ $versionLabel.AutoSize = $true
+ $versionLabel.Location = New-Object System.Drawing.Point(18, 44)
 
-$btnUninstall = New-Object System.Windows.Forms.Button
-$btnUninstall.Text = $script:LangData.BtnUninstall
-$btnUninstall.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
-$btnUninstall.BackColor = [System.Drawing.Color]::FromArgb(45, 110, 180)
-$btnUninstall.ForeColor = [System.Drawing.Color]::Black
-$btnUninstall.FlatStyle = "Flat"
-$btnUninstall.Size = New-Object System.Drawing.Size(100, 35)
-$btnUninstall.Location = New-Object System.Drawing.Point(230, 15)
-
-$btnCleanTraces = New-Object System.Windows.Forms.Button
-$btnCleanTraces.Text = $script:LangData.BtnCleanTraces
-$btnCleanTraces.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
-$btnCleanTraces.BackColor = [System.Drawing.Color]::FromArgb(60, 140, 210)
-$btnCleanTraces.ForeColor = [System.Drawing.Color]::Black
-$btnCleanTraces.FlatStyle = "Flat"
-$btnCleanTraces.Size = New-Object System.Drawing.Size(100, 35)
-$btnCleanTraces.Location = New-Object System.Drawing.Point(340, 15)
-
-$btnViewLog = New-Object System.Windows.Forms.Button
-$btnViewLog.Text = $script:LangData.BtnViewLog
-$btnViewLog.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
-$btnViewLog.BackColor = [System.Drawing.Color]::FromArgb(80, 170, 235)
-$btnViewLog.ForeColor = [System.Drawing.Color]::Black
-$btnViewLog.FlatStyle = "Flat"
-$btnViewLog.Size = New-Object System.Drawing.Size(100, 35)
-$btnViewLog.Location = New-Object System.Drawing.Point(450, 15)
-
-# --- Language Buttons (Positioned dynamically via listener) ---
-$btnLangPT = New-Object System.Windows.Forms.Button
-$btnLangPT.Text = "POR"
-$btnLangPT.Font = New-Object System.Drawing.Font("Consolas", 7, [System.Drawing.FontStyle]::Bold)
-$btnLangPT.BackColor = [System.Drawing.Color]::FromArgb(20, 60, 135)
-$btnLangPT.ForeColor = [System.Drawing.Color]::Black
-$btnLangPT.FlatStyle = "Flat"
-$btnLangPT.Size = New-Object System.Drawing.Size(30, 22)
-$btnLangPT.Top = 38
-$btnLangPT.Left = 0
-
-$btnLangEN = New-Object System.Windows.Forms.Button
-$btnLangEN.Text = "ENG"
-$btnLangEN.Font = New-Object System.Drawing.Font("Consolas", 7, [System.Drawing.FontStyle]::Bold)
-$btnLangEN.BackColor = [System.Drawing.Color]::FromArgb(45, 105, 175)
-$btnLangEN.ForeColor = [System.Drawing.Color]::Black
-$btnLangEN.FlatStyle = "Flat"
-$btnLangEN.Size = New-Object System.Drawing.Size(30, 22)
-$btnLangEN.Top = 38
-$btnLangEN.Left = 0
-
-$btnLangES = New-Object System.Windows.Forms.Button
-$btnLangES.Text = "ESP"
-$btnLangES.Font = New-Object System.Drawing.Font("Consolas", 7, [System.Drawing.FontStyle]::Bold)
-$btnLangES.BackColor = [System.Drawing.Color]::FromArgb(70, 150, 215)
-$btnLangES.ForeColor = [System.Drawing.Color]::Black
-$btnLangES.FlatStyle = "Flat"
-$btnLangES.Size = New-Object System.Drawing.Size(30, 22)
-$btnLangES.Top = 38
-$btnLangES.Left = 0
-
-$actionsPanel.Controls.AddRange(@($btnScan, $btnDeepScan, $btnUninstall, $btnCleanTraces, $btnViewLog, $btnLangPT, $btnLangEN, $btnLangES))
+ $headerPanel.Controls.AddRange(@($titleLabel, $versionLabel))
 
 # ==========================================
-# 12. Main Content Area (Log Text Box)
+# 9. Barra de Ações (Botões Principais + Idiomas)
 # ==========================================
-$logTextBox = New-Object System.Windows.Forms.RichTextBox
-$logTextBox.ReadOnly = $true
-$logTextBox.Dock = "Fill"
-$logTextBox.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
-$logTextBox.Font = New-Object System.Drawing.Font("Consolas", 8)
-$logTextBox.ScrollBars = "Vertical"
-$logTextBox.WordWrap = $false
-$logTextBox.Text = $script:LangData.LogInitText + [Environment]::NewLine
-$logTextBox.Visible = $false
+ $actionsPanel = New-Object System.Windows.Forms.Panel
+ $actionsPanel.Dock = "Top"
+ $actionsPanel.Height = 50
+ $actionsPanel.BackColor = [System.Drawing.Color]::FromArgb(30, 20, 30)
+ $actionsPanel.Padding = New-Object System.Windows.Forms.Padding(10, 5, 10, 5)
+
+ # --- Botões Principais (Gradiente Azul, ForeColor Black) ---
+ $btnScan = New-Object System.Windows.Forms.Button
+ $btnScan.Text = $script:LangData.BtnScanList
+ $btnScan.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
+ $btnScan.BackColor = [System.Drawing.Color]::FromArgb(15, 50, 120)
+ $btnScan.ForeColor = [System.Drawing.Color]::Black
+ $btnScan.FlatStyle = "Flat"
+ $btnScan.Size = New-Object System.Drawing.Size(100, 35)
+ $btnScan.Location = New-Object System.Drawing.Point(10, 7)
+
+ $btnDeepScan = New-Object System.Windows.Forms.Button
+ $btnDeepScan.Text = $script:LangData.BtnNewScan
+ $btnDeepScan.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
+ $btnDeepScan.BackColor = [System.Drawing.Color]::FromArgb(30, 80, 150)
+ $btnDeepScan.ForeColor = [System.Drawing.Color]::Black
+ $btnDeepScan.FlatStyle = "Flat"
+ $btnDeepScan.Size = New-Object System.Drawing.Size(100, 35)
+ $btnDeepScan.Location = New-Object System.Drawing.Point(120, 7)
+
+ $btnUninstall = New-Object System.Windows.Forms.Button
+ $btnUninstall.Text = $script:LangData.BtnUninstall
+ $btnUninstall.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
+ $btnUninstall.BackColor = [System.Drawing.Color]::FromArgb(45, 110, 180)
+ $btnUninstall.ForeColor = [System.Drawing.Color]::Black
+ $btnUninstall.FlatStyle = "Flat"
+ $btnUninstall.Size = New-Object System.Drawing.Size(100, 35)
+ $btnUninstall.Location = New-Object System.Drawing.Point(230, 7)
+
+ $btnCleanTraces = New-Object System.Windows.Forms.Button
+ $btnCleanTraces.Text = $script:LangData.BtnCleanTraces
+ $btnCleanTraces.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
+ $btnCleanTraces.BackColor = [System.Drawing.Color]::FromArgb(60, 140, 210)
+ $btnCleanTraces.ForeColor = [System.Drawing.Color]::Black
+ $btnCleanTraces.FlatStyle = "Flat"
+ $btnCleanTraces.Size = New-Object System.Drawing.Size(100, 35)
+ $btnCleanTraces.Location = New-Object System.Drawing.Point(340, 7)
+
+ $btnViewLog = New-Object System.Windows.Forms.Button
+ $btnViewLog.Text = $script:LangData.BtnViewLog
+ $btnViewLog.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
+ $btnViewLog.BackColor = [System.Drawing.Color]::FromArgb(80, 170, 235)
+ $btnViewLog.ForeColor = [System.Drawing.Color]::Black
+ $btnViewLog.FlatStyle = "Flat"
+ $btnViewLog.Size = New-Object System.Drawing.Size(100, 35)
+ $btnViewLog.Location = New-Object System.Drawing.Point(450, 7)
+
+ # --- Botões de Idioma (Sem Anchor, posicionados via Listener) ---
+ $btnLangPT = New-Object System.Windows.Forms.Button
+ $btnLangPT.Text = "POR"
+ $btnLangPT.Font = New-Object System.Drawing.Font("Consolas", 7, [System.Drawing.FontStyle]::Bold)
+ $btnLangPT.BackColor = [System.Drawing.Color]::FromArgb(20, 60, 135)
+ $btnLangPT.ForeColor = [System.Drawing.Color]::Black
+ $btnLangPT.FlatStyle = "Flat"
+ $btnLangPT.Size = New-Object System.Drawing.Size(30, 22)
+ $btnLangPT.Top = 13
+ $btnLangPT.Left = 0
+
+ $btnLangEN = New-Object System.Windows.Forms.Button
+ $btnLangEN.Text = "ENG"
+ $btnLangEN.Font = New-Object System.Drawing.Font("Consolas", 7, [System.Drawing.FontStyle]::Bold)
+ $btnLangEN.BackColor = [System.Drawing.Color]::FromArgb(45, 105, 175)
+ $btnLangEN.ForeColor = [System.Drawing.Color]::Black
+ $btnLangEN.FlatStyle = "Flat"
+ $btnLangEN.Size = New-Object System.Drawing.Size(30, 22)
+ $btnLangEN.Top = 13
+ $btnLangEN.Left = 0
+
+ $btnLangES = New-Object System.Windows.Forms.Button
+ $btnLangES.Text = "ESP"
+ $btnLangES.Font = New-Object System.Drawing.Font("Consolas", 7, [System.Drawing.FontStyle]::Bold)
+ $btnLangES.BackColor = [System.Drawing.Color]::FromArgb(70, 150, 215)
+ $btnLangES.ForeColor = [System.Drawing.Color]::Black
+ $btnLangES.FlatStyle = "Flat"
+ $btnLangES.Size = New-Object System.Drawing.Size(30, 22)
+ $btnLangES.Top = 13
+ $btnLangES.Left = 0
+
+ $actionsPanel.Controls.AddRange(@($btnScan, $btnDeepScan, $btnUninstall, $btnCleanTraces, $btnViewLog, $btnLangPT, $btnLangEN, $btnLangES))
+
+# ==========================================
+# 10. Área de Conteúdo (Grid e Log)
+# ==========================================
+ $logTextBox = New-Object System.Windows.Forms.RichTextBox
+ $logTextBox.ReadOnly = $true
+ $logTextBox.Dock = "Fill"
+ $logTextBox.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
+ $logTextBox.Font = New-Object System.Drawing.Font("Consolas", 8)
+ $logTextBox.ScrollBars = "Vertical"
+ $logTextBox.WordWrap = $false
+ $logTextBox.Text = $script:LangData.LogInitText + [Environment]::NewLine
+ $logTextBox.Visible = $false
 
 # ============================================================================
-# DataGridView - Instantiation
+# DataGridView - Instanciação
 # ============================================================================
+
 $dataGridView = New-Object System.Windows.Forms.DataGridView
 
 # ============================================================================
-# DataGridView - Appearance and Styling
+# DataGridView - Aparência
 # ============================================================================
+
 $dataGridView.Dock = "Fill"
 $dataGridView.BackgroundColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
 $dataGridView.BorderStyle = "None"
@@ -666,8 +576,9 @@ $dataGridView.RowTemplate.DefaultCellStyle.SelectionBackColor = [System.Drawing.
 $dataGridView.RowTemplate.DefaultCellStyle.SelectionForeColor = [System.Drawing.Color]::White   
 
 # ============================================================================
-# DataGridView - Behavior Settings
+# DataGridView - Comportamento
 # ============================================================================
+
 $dataGridView.AllowUserToAddRows = $false
 $dataGridView.AllowUserToDeleteRows = $false
 $dataGridView.AllowUserToResizeRows = $false
@@ -679,10 +590,9 @@ $dataGridView.AutoSizeColumnsMode = [System.Windows.Forms.DataGridViewAutoSizeCo
 $dataGridView.RowTemplate.Height = 35
 
 # ============================================================================
-# DataGridView Columns - Creation
-# Note: Internal column names are kept exactly as "Nome", "Versao", etc. 
-# to preserve object property binding with the Engine output.
+# Colunas - Criação
 # ============================================================================
+
 $colIcon = New-Object System.Windows.Forms.DataGridViewImageColumn
 $colIcon.Name = "Icone"
 $colIcon.HeaderText = ""
@@ -690,6 +600,10 @@ $colIcon.ImageLayout = [System.Windows.Forms.DataGridViewImageCellLayout]::Zoom
 $colIcon.Width = 45
 
 $dataGridView.Columns.Add($colIcon) | Out-Null
+
+# Nomes internos mantidos em inglês para estabilidade
+# HeaderText obtido via Language
+
 $dataGridView.Columns.Add("Nome", $script:LangData.ColName) | Out-Null
 $dataGridView.Columns.Add("Versao", $script:LangData.ColVersion) | Out-Null
 $dataGridView.Columns.Add("Fabricante", $script:LangData.ColManufacturer) | Out-Null
@@ -700,26 +614,28 @@ $dataGridView.Columns.Add("Local", $script:LangData.ColLocation) | Out-Null
 $dataGridView.Columns.Add("Status", $script:LangData.ColStatus) | Out-Null
 
 # ============================================================================
-# DataGridView Columns - Specific Configurations
+# Colunas - Configurações Específicas
 # ============================================================================
+
 $dataGridView.Columns["TamanhoBytes"].Visible = $false
 $dataGridView.Columns["Local"].AutoSizeMode = [System.Windows.Forms.DataGridViewAutoSizeColumnMode]::Fill
 $dataGridView.Columns["Local"].MinimumWidth = 150
 
 # ============================================================================
-# Sorting State Tracking Variables
+# Controle de Ordenação
 # ============================================================================
+
 $script:lastSortedColumn = $null
 $script:lastSortDirection = "Ascending"
 
 # ============================================================================
-# DataGridView - Sort Click Event Handling
+# Eventos
 # ============================================================================
+
 $dataGridView.Add_ColumnHeaderMouseClick({
 
     $clickedCol = $dataGridView.Columns[$_.ColumnIndex]
 
-    # Map the formatted Size column directly to the hidden Raw Bytes column for correct numeric sorting
     $sortCol =
         if ($clickedCol.Name -eq "Tamanho") {
             $dataGridView.Columns["TamanhoBytes"]
@@ -728,8 +644,8 @@ $dataGridView.Add_ColumnHeaderMouseClick({
             $clickedCol
         }
 
-    # Toggle ascending/descending
     if ($script:lastSortedColumn -eq $sortCol) {
+
         $script:lastSortDirection =
             if ($script:lastSortDirection -eq "Ascending") {
                 "Descending"
@@ -739,85 +655,82 @@ $dataGridView.Add_ColumnHeaderMouseClick({
             }
     }
     else {
+
         $script:lastSortedColumn = $sortCol
         $script:lastSortDirection = "Ascending"
     }
 
-    # Apply the sort execution
     if ($script:lastSortDirection -eq "Ascending") {
-        $dataGridView.Sort($sortCol, [System.ComponentModel.ListSortDirection]::Ascending)
+
+        $dataGridView.Sort(
+            $sortCol,
+            [System.ComponentModel.ListSortDirection]::Ascending
+        )
     }
     else {
-        $dataGridView.Sort($sortCol, [System.ComponentModel.ListSortDirection]::Descending)
+
+        $dataGridView.Sort(
+            $sortCol,
+            [System.ComponentModel.ListSortDirection]::Descending
+        )
     }
 })
 
 # ==========================================
-# 13. Footer Panel
+# 11. Rodapé
 # ==========================================
-$footerPanel = New-Object System.Windows.Forms.Panel
-$footerPanel.Dock = "Bottom"
-$footerPanel.Height = 30
-$footerPanel.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
-$footerPanel.Padding = New-Object System.Windows.Forms.Padding(10, 0, 10, 0)
+ $footerPanel = New-Object System.Windows.Forms.Panel
+ $footerPanel.Dock = "Bottom"
+ $footerPanel.Height = 30
+ $footerPanel.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
+ $footerPanel.Padding = New-Object System.Windows.Forms.Padding(10, 0, 10, 0)
 
-$statusLabel = New-Object System.Windows.Forms.Label
-$statusLabel.Text = $script:LangData.StatusReady
-$statusLabel.Font = New-Object System.Drawing.Font("Consolas", 9)
-$statusLabel.ForeColor = [System.Drawing.Color]::Gray
-$statusLabel.AutoSize = $false
-$statusLabel.Dock = "Fill"
-$statusLabel.TextAlign = "MiddleLeft"
+ $statusLabel = New-Object System.Windows.Forms.Label
+ $statusLabel.Text = $script:LangData.StatusReady
+ $statusLabel.Font = New-Object System.Drawing.Font("Consolas", 9)
+ $statusLabel.ForeColor = [System.Drawing.Color]::Gray
+ $statusLabel.AutoSize = $false
+ $statusLabel.Dock = "Fill"
+ $statusLabel.TextAlign = "MiddleLeft"
 
-$footerPanel.Controls.Add($statusLabel)
+ $footerPanel.Controls.Add($statusLabel)
 
 # ==========================================
-# 14. Splash Screen Initialization
+# 12. SplashScreen Setup
 # ==========================================
-$splashForm = New-Object System.Windows.Forms.Form
-$splashForm.FormBorderStyle = "None"
-$splashForm.StartPosition = "CenterScreen"
-$splashForm.BackColor = [System.Drawing.Color]::FromArgb(15, 15, 15)
-$splashForm.Size = New-Object System.Drawing.Size(500, 200)
-$splashForm.TopMost = $true
-$splashForm.ShowInTaskbar = $false
+ $splashForm = New-Object System.Windows.Forms.Form
+ $splashForm.FormBorderStyle = "None"
+ $splashForm.StartPosition = "CenterScreen"
+ $splashForm.BackColor = [System.Drawing.Color]::FromArgb(15, 15, 15)
+ $splashForm.Size = New-Object System.Drawing.Size(500, 200)
+ $splashForm.TopMost = $true
+ $splashForm.ShowInTaskbar = $false
 
-# Application Icon
-$splashIcon = New-Object System.Windows.Forms.PictureBox
-$splashIcon.Image = [System.Drawing.Image]::FromFile($(Join-Path $AppRoot "icon.ico"))
-$splashIcon.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::StretchImage
-$splashIcon.Size = New-Object System.Drawing.Size(48, 48)
-$splashIcon.Location = New-Object System.Drawing.Point(30, 35)
+ $splashTitle = New-Object System.Windows.Forms.Label
+ $splashTitle.Text = $script:LangData.SplashTitle
+ $splashTitle.Font = New-Object System.Drawing.Font("Consolas", 24, [System.Drawing.FontStyle]::Bold)
+ $splashTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 191, 255)
+ $splashTitle.AutoSize = $true
+ $splashTitle.Location = New-Object System.Drawing.Point(30, 40)
 
-# Title
-$splashTitle = New-Object System.Windows.Forms.Label
-$splashTitle.Text = $script:LangData.SplashTitle
-$splashTitle.Font = New-Object System.Drawing.Font("Consolas", 24, [System.Drawing.FontStyle]::Bold)
-$splashTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 191, 255)
-$splashTitle.AutoSize = $true
-$splashTitle.Location = New-Object System.Drawing.Point(90, 40)
+ $splashSubTitle = New-Object System.Windows.Forms.Label
+ $splashSubTitle.Text = $script:LangData.SplashAnalyze
+ $splashSubTitle.Font = New-Object System.Drawing.Font("Consolas", 10)
+ $splashSubTitle.ForeColor = [System.Drawing.Color]::Gray
+ $splashSubTitle.AutoSize = $true
+ $splashSubTitle.Location = New-Object System.Drawing.Point(32, 85)
 
-# Subtitle
-$splashSubTitle = New-Object System.Windows.Forms.Label
-$splashSubTitle.Text = $script:LangData.SplashAnalyze
-$splashSubTitle.Font = New-Object System.Drawing.Font("Consolas", 10)
-$splashSubTitle.ForeColor = [System.Drawing.Color]::Gray
-$splashSubTitle.AutoSize = $true
-$splashSubTitle.Location = New-Object System.Drawing.Point(32, 95)
+ $splashLogLabel = New-Object System.Windows.Forms.Label
+ $splashLogLabel.Text = $script:LangData.SplashInit
+ $splashLogLabel.Font = New-Object System.Drawing.Font("Consolas", 8)
+ $splashLogLabel.ForeColor = [System.Drawing.Color]::DimGray
+ $splashLogLabel.AutoSize = $false
+ $splashLogLabel.Size = New-Object System.Drawing.Size(440, 25)
+ $splashLogLabel.Location = New-Object System.Drawing.Point(30, 140)
 
-# Status Log
-$splashLogLabel = New-Object System.Windows.Forms.Label
-$splashLogLabel.Text = $script:LangData.SplashInit
-$splashLogLabel.Font = New-Object System.Drawing.Font("Consolas", 8)
-$splashLogLabel.ForeColor = [System.Drawing.Color]::DimGray
-$splashLogLabel.AutoSize = $false
-$splashLogLabel.Size = New-Object System.Drawing.Size(440, 25)
-$splashLogLabel.Location = New-Object System.Drawing.Point(30, 140)
+ $splashForm.Controls.AddRange(@($splashTitle, $splashSubTitle, $splashLogLabel))
 
-$splashForm.Controls.AddRange(@($splashIcon, $splashTitle, $splashSubTitle, $splashLogLabel))
-
-# Global function mapping to update Splash Screen dynamically from the Engine
-$Global:Un1LogAction = {
+ $Global:Un1LogAction = {
     param($message)
     $splashLogLabel.Text = $message
     $splashForm.Refresh()
@@ -825,7 +738,7 @@ $Global:Un1LogAction = {
 }
 
 # ==========================================
-# 15. Dynamic Language Update Implementation
+# 13. Função de Atualização de Idioma (Dinâmica)
 # ==========================================
 function Update-UILanguage {
     $L = $script:LangData
@@ -839,8 +752,6 @@ function Update-UILanguage {
     $btnUninstall.Text = $L.BtnUninstall
     $btnCleanTraces.Text = $L.BtnCleanTraces
     $btnViewLog.Text = $L.BtnViewLog
-    $btnHelp.Text = $L.BtnHelp
-    $btnAbout.Text = $L.BtnAbout
     
     $dataGridView.Columns["Nome"].HeaderText = $L.ColName
     $dataGridView.Columns["Versao"].HeaderText = $L.ColVersion
@@ -859,7 +770,7 @@ function Update-UILanguage {
 }
 
 # ==========================================
-# 16. Core Scan Execution Logic
+# 14. Lógica de Scan
 # ==========================================
 function Update-Grid {
     $L = $script:LangData
@@ -873,8 +784,25 @@ function Update-Grid {
         
         & $Global:Un1LogAction $L.Phase2
         $deepResult = Get-Un1nst4ll3rDeepSize -ProgramList $scanResult
+
+        # FASE 2.5: Busca órfãos e ANEXA à lista principal ANTES de medir o tamanho
+        & $Global:Un1LogAction "Phase 2.5: Scanning MuiCache for orphans..."
+        $orphanApps = @(Find-Un1nst4ll3rOrphans -ResolvedPrograms $deepResult)
         
-        # Finally, measure size for EVERY mapped item (Registry + Orphans)
+        # Garante que os órfãos sejam anexados à lista principal de forma segura
+        if ($orphanApps -and $orphanApps.Count -gt 0) {
+            # O operador + funciona perfeitamente com Arrays normais do PowerShell
+            $deepResult = @($deepResult) + @($orphanApps)
+            
+            # Log de debug para confirmar que colou
+            foreach($orp in $orphanApps) {
+                Write-Un1Log -Category "ORPHAN" -Message "Found $($orp.Nome) orphan application from MuiCache." -Color Magenta
+            }
+        } else {
+            Write-Un1Log -Category "ORPHAN" -Message "No orphan applications found in MuiCache." -Color Green
+        }
+
+        # Agora sim, mede o tamanho de TODO MUNDO (Registro + Órfãos)
         & $Global:Un1LogAction $L.Phase3
         $deepResult = Get-Un1nst4ll3rSizeEngine -ProgramList $deepResult
         
@@ -894,9 +822,9 @@ function Update-Grid {
 }
 
 # ==========================================
-# 17. JSON Data Loader Logic
+# 15. Lógica de Carregamento do JSON
 # ==========================================
-function Load-GridFromJson{
+function Load-GridFromJson {
     param([string]$Path)
     $L = $script:LangData
     
@@ -905,7 +833,6 @@ function Load-GridFromJson{
         return $false
     }
 
-    # Ensure memory shortcuts are loaded prior to rendering icons
     if ($null -eq $Global:MemoryShortcuts -or $Global:MemoryShortcuts.Count -eq 0) {
         $Global:MemoryShortcuts = Get-Un1nst4ll3rShortcutCache
     }
@@ -924,7 +851,6 @@ function Load-GridFromJson{
             $rowIndex = $dataGridView.Rows.Add()
             $row = $dataGridView.Rows[$rowIndex]
             
-            # Fetch application Icon dynamically
             $appIcon = Get-Un1nst4ll3rAppIcon -AppName $app.Nome -IconPath $app.DisplayIcon -ExePath $app.ExePath -InstallLocal $app.Local
 
             $row.Cells["Icone"].Value = $appIcon           
@@ -932,7 +858,6 @@ function Load-GridFromJson{
             $row.Cells["Versao"].Value = $app.Versao
             $row.Cells["Fabricante"].Value = $app.Fabricante
 
-            # Formatting raw bytes into readable capacities (GB/MB/KB)
             $bytes = $app.Tamanho
             if ($null -ne $bytes -and $bytes -gt 0) {
                 $row.Cells["TamanhoBytes"].Value = [long]$bytes
@@ -943,28 +868,25 @@ function Load-GridFromJson{
                 $row.Cells["Tamanho"].Value = $sizeStr
             } else {
                 $row.Cells["TamanhoBytes"].Value = [long]0
-                $row.Cells["Tamanho"].Value = $script:LangData.SizeNA
-            }
+                $row.Cells["Tamanho"].Value = $script:LangData.SizeNA            }
 
             $row.Cells["Tipo"].Value = $app.Tipo
             $row.Cells["Local"].Value = $app.Local
             
-            # Map technical statuses to Language File equivalents
+            # Traduz o Status na hora de exibir na tela
             $translatedStatus = $app.Status
             if ($app.Status -eq "Orphan") { $translatedStatus = $script:LangData.StatusOrphan }
             elseif ($app.Status -eq "NoLocation") { $translatedStatus = $script:LangData.StatusNoLocation }
             elseif ($app.Status -eq "System") { $translatedStatus = $script:LangData.StatusSystem }
 
             $row.Cells["Status"].Value = $translatedStatus
-            
-            # Highlight orphans with red text
+            # Pinta de vermelho se for Orphan
             if ($app.Status -eq "Orphan") {
                 $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::FromArgb(255, 80, 80)
                 $orphanCount++
             }       
          }
         
-        # Pre-Sort Default Setup (Ascending by Name)
         $script:lastSortedColumn = $dataGridView.Columns["Nome"]
         $script:lastSortDirection = "Ascending"
         $dataGridView.Sort($script:lastSortedColumn, [System.ComponentModel.ListSortDirection]::Ascending)
@@ -981,274 +903,153 @@ function Load-GridFromJson{
 }
 
 # ==========================================
-# 18. Interface Event Bindings
+# 16. Eventos dos Botões
 # ==========================================
-$btnScan.Add_Click({
+ $btnScan.Add_Click({
     $logTextBox.Visible = $false
     $dataGridView.Visible = $true
 })
 
-$btnDeepScan.Add_Click({
+ $btnDeepScan.Add_Click({
     Update-Grid
+ })
+
+ $btnUninstall.Add_Click({
+        $AppName = $dataGridView.Item("Nome", $dataGridView.CurrentRow.Index).Value
+        $jsonRaw = Get-Content -Path $script:jsonPath -Raw -Encoding UTF8
+        $AppData = ConvertFrom-Json -InputObject $jsonRaw
+        $AppData = $AppData | Where-Object { $_.Nome -eq $AppName }
+        $params = @{
+            AppName                   = $AppData.Nome
+            UninstallStringValue      = $AppData.UninstallString
+            QuietUninstallStringValue = $AppData.QuietUninstallString
+            ProgramType               = $AppData.Tipo
+            AppIdentifier             = $AppData.Chave
+        }
+        $UninstallResult = Start-Un1nst4ll3rApp @params
 })
 
-$btnUninstall.Add_Click({
-    $AppName = $dataGridView.Item("Nome", $dataGridView.CurrentRow.Index).Value
-    $jsonRaw = Get-Content -Path $script:jsonPath -Raw -Encoding UTF8
-    $AppData = ConvertFrom-Json -InputObject $jsonRaw
-    $AppData = $AppData | Where-Object { $_.Nome -eq $AppName }
-    $params = @{
-        AppName                   = $AppData.Nome
-        UninstallStringValue      = $AppData.UninstallString
-        QuietUninstallStringValue = $AppData.QuietUninstallString
-        ProgramType               = $AppData.Tipo
-        AppIdentifier             = $AppData.Chave
-    }
-    $UninstallResult = Start-Un1nst4ll3rApp @params
-})
-
-$btnCleanTraces.Add_Click({
+ $btnCleanTraces.Add_Click({
     [System.Windows.Forms.MessageBox]::Show($script:LangData.MsgCleanFuture, "CLEAN TRACES", "OK", "Information")
-})
+ })
 
-$btnViewLog.Add_Click({
+ $btnViewLog.Add_Click({
     if ($null -ne $Global:Un1AnalysisLog -and $Global:Un1AnalysisLog.Count -gt 0) {
         
-        $logTextBox.SuspendLayout() # Pause rendering to prevent flickering
+        $logTextBox.SuspendLayout() # Evita flickering (piscada) durante a atualização
         $logTextBox.Clear()
         
         foreach ($entry in $Global:Un1AnalysisLog) {
-            # Focus on the end of the current block
+            # Posiciona o cursor no final do texto atual
             $logTextBox.SelectionStart = $logTextBox.TextLength
             $logTextBox.SelectionLength = 0
 
-            # Retro-compatibility checks for older log array structure
+            # Fallbacks caso a estrutura do entry seja a versão antiga
             $ts = if ($entry.PSObject.Properties.Name -contains 'Timestamp') { $entry.Timestamp } else { ($entry.Text -split ' ')[0] }
             $cat = if ($entry.PSObject.Properties.Name -contains 'Category') { $entry.Category } else { ($entry.Text -split ' ')[1] }
             $msg = if ($entry.PSObject.Properties.Name -contains 'Message') { $entry.Message } else { $entry.Text }
 
-            # Convert string color name (e.g. "Cyan") into .NET Drawing Color
+            # Converte o nome da cor do Console (ex: "Cyan") para Drawing.Color
             $drawColor = [System.Drawing.Color]::FromName($entry.Color)
             if ($drawColor.IsEmpty) { $drawColor = [System.Drawing.Color]::LightGray }
 
-            # Inject timestamps and brackets in neutral colors
+            # Escreve timestamp e categoria em cor neutra
             $logTextBox.SelectionColor = [System.Drawing.Color]::WhiteSmoke
             $logTextBox.AppendText("$ts ")
             $logTextBox.AppendText("[$cat] ")
 
-            # Inject the actual message text mapped to the determined color
+            # Escreve apenas a mensagem na cor selecionada
             $logTextBox.SelectionColor = $drawColor
             $logTextBox.AppendText("$msg`r`n")
         }
         
         $logTextBox.ResumeLayout()
         
-        # Scroll down automatically
+        # Auto-scroll para o final do log
         $logTextBox.SelectionStart = $logTextBox.Text.Length
         $logTextBox.ScrollToCaret()
     } else {
         $logTextBox.Text = $script:LangData.StatusNoLog
     }
     
-    # Toggle View Layer: Hide DataGrid, Reveal RichTextBox Log
+    # Alterna a visualização: Oculta o Grid, mostra o Log
     $dataGridView.Visible = $false
     $logTextBox.Visible = $true
     $statusLabel.Text = $script:LangData.StatusShowingLog
-}) 
+ }) 
 
-# --- Language Swap Triggers ---
-$btnLangPT.Add_Click({
+# --- Eventos dos Botões de Idioma ---
+ $btnLangPT.Add_Click({
     $script:CurrentLang = "pt-BR"
     $langObj = ConvertFrom-Json (Get-Content $script:langPath -Raw -Encoding UTF8)
     $script:LangData = $langObj.$script:CurrentLang
     Update-UILanguage
-})
+ })
 
-$btnLangEN.Add_Click({
+ $btnLangEN.Add_Click({
     $script:CurrentLang = "en-US"
     $langObj = ConvertFrom-Json (Get-Content $script:langPath -Raw -Encoding UTF8)
     $script:LangData = $langObj.$script:CurrentLang
     Update-UILanguage
-})
+ })
 
-$btnLangES.Add_Click({
+ $btnLangES.Add_Click({
     $script:CurrentLang = "es-ES"
     $langObj = ConvertFrom-Json (Get-Content $script:langPath -Raw -Encoding UTF8)
     $script:LangData = $langObj.$script:CurrentLang
     Update-UILanguage
-})
-
-# --- Help Button Click Event ---
-$btnHelp.Add_Click({
-    # Detect the correct README file based on current language
-    $readmeFile = switch ($script:CurrentLang) {
-        "pt-BR" { "README_POR.md" }
-        "es-ES" { "README_ES.md" }
-        default { "README.md" }
-    }
-    $readmePath = Join-Path $AppRoot $readmeFile
-    if (!(Test-Path $readmePath)) {
-        [System.Windows.Forms.MessageBox]::Show("README not found in $AppRoot", "Error", "OK", "Error")
-        return
-    }
-
-    $helpForm = New-Object System.Windows.Forms.Form
-    $helpForm.Text = "Un1nst4ll3r - Documentation (Markdown)"
-    $helpForm.Size = New-Object System.Drawing.Size(800, 600)
-    $helpForm.StartPosition = "CenterParent"
-    $helpForm.BackColor = [System.Drawing.Color]::FromArgb(18, 18, 18)
-    $helpForm.Icon = $form.Icon
-
-    $contentBox = $null
-    # Check if the assembly is actually loaded in the current domain
-    if ([AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.FullName -match "MdViewer" }) {
-        try {
-            # Use New-Object with explicit TypeName for better resolution in UI event blocks
-            $contentBox = New-Object -TypeName "MdViewer.MarkdownViewer" -ErrorAction Stop
-            $contentBox.Dock = "Fill"
-            $contentBox.Markdown = Get-Content -Path $readmePath -Raw -Encoding UTF8
-        } catch {
-            Write-Un1Log -Category "HELP" -Message "MdViewer instantiation failed: $($_.Exception.Message)" -Color Yellow
-        }
-    }
-
-    # Fallback if instantiation failed or assembly was never loaded
-    if ($null -eq $contentBox) {
-        $contentBox = New-Object System.Windows.Forms.RichTextBox
-        $contentBox.ReadOnly = $true
-        $contentBox.Dock = "Fill"
-        $contentBox.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 30)
-        $contentBox.ForeColor = [System.Drawing.Color]::White
-        $contentBox.Font = New-Object System.Drawing.Font("Consolas", 10)
-        $contentBox.Text = Get-Content -Path $readmePath -Raw -Encoding UTF8
-    }
-
-    $helpForm.Controls.Add($contentBox)
-    $helpForm.ShowDialog($form)
-
-})
-# --- About Button Click Event ---
-$btnAbout.Add_Click({
-    $aboutForm = New-Object System.Windows.Forms.Form
-    $aboutForm.Text = $script:LangData.BtnAbout
-    $aboutForm.Size = New-Object System.Drawing.Size(420, 280)
-    $aboutForm.StartPosition = "CenterParent"
-    $aboutForm.FormBorderStyle = "FixedDialog"
-    $aboutForm.MaximizeBox = $false
-    $aboutForm.MinimizeBox = $false
-    $aboutForm.BackColor = [System.Drawing.Color]::FromArgb(25, 25, 25)
-    $aboutForm.ForeColor = [System.Drawing.Color]::White
-    $aboutForm.Icon = $form.Icon
-    $aboutForm.Opacity = 1
-
-    # Gradient Background Drawing
-    $aboutForm.Add_Paint({
-        param($sender, $e)
-        $rect = $sender.ClientRectangle
-        $color1 = [System.Drawing.Color]::FromArgb(25, 25, 25)
-        $color2 = [System.Drawing.Color]::FromArgb(45, 55, 65) # Subtle deep blue-gray fade
-        $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect, $color1, $color2, [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
-        $e.Graphics.FillRectangle($brush, $rect)
-        $brush.Dispose()
-    })
-
-    $logo = New-Object System.Windows.Forms.PictureBox
-    $logo.Image = [System.Drawing.Image]::FromFile($(Join-Path $AppRoot "icon.ico"))
-    $logo.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::StretchImage
-    $logo.Size = New-Object System.Drawing.Size(64, 64)
-    $logo.Location = New-Object System.Drawing.Point(30, 30)
-    $logo.BackColor = [System.Drawing.Color]::Transparent
-
-    $lblTitle = New-Object System.Windows.Forms.Label
-    $lblTitle.Text = $script:LangData.Title
-    $lblTitle.Font = New-Object System.Drawing.Font("Consolas", 18, [System.Drawing.FontStyle]::Bold)
-    $lblTitle.ForeColor = [System.Drawing.Color]::FromArgb(0, 191, 255)
-    $lblTitle.Location = New-Object System.Drawing.Point(110, 35)
-    $lblTitle.AutoSize = $true
-    $lblTitle.BackColor = [System.Drawing.Color]::Transparent
-
-    $lblVer = New-Object System.Windows.Forms.Label
-    $lblVer.Text = $script:LangData.Version
-    $lblVer.Font = New-Object System.Drawing.Font("Consolas", 9)
-    $lblVer.ForeColor = [System.Drawing.Color]::Gray
-    $lblVer.Location = New-Object System.Drawing.Point(112, 70)
-    $lblVer.AutoSize = $true
-    $lblVer.BackColor = [System.Drawing.Color]::Transparent
-
-    $lblInfo = New-Object System.Windows.Forms.Label
-    $lblInfo.Text = "A high-performance system scanner and uninstaller.`nDeep discovery of orphans and legacy traces."
-    $lblInfo.Font = New-Object System.Drawing.Font("Consolas", 9)
-    $lblInfo.ForeColor = [System.Drawing.Color]::LightGray
-    $lblInfo.Location = New-Object System.Drawing.Point(30, 115)
-    $lblInfo.Size = New-Object System.Drawing.Size(360, 50)
-    $lblInfo.TextAlign = "MiddleCenter"
-    $lblInfo.BackColor = [System.Drawing.Color]::Transparent
-
-    $btnClose = New-Object System.Windows.Forms.Button
-    $btnClose.Text = "CLOSE"
-    $btnClose.FlatStyle = "Flat"
-    $btnClose.BackColor = [System.Drawing.Color]::FromArgb(40, 40, 40)
-    $btnClose.ForeColor = [System.Drawing.Color]::White
-    $btnClose.Size = New-Object System.Drawing.Size(100, 35)
-    $btnClose.Location = New-Object System.Drawing.Point(160, 190)
-    $btnClose.DialogResult = [System.Windows.Forms.DialogResult]::OK
-
-    $aboutForm.Controls.AddRange(@($logo, $lblTitle, $lblVer, $lblInfo, $btnClose))
-    $aboutForm.ShowDialog($form)
-})
-
+ })
 
 # ==========================================
-# 19. Form Boot Sequence
+# 17. Abertura do Form
 # ==========================================
-$form.Add_Shown({
-    $form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized
-    Update-Grid
-    $statusLabel.Text = $script:LangData.StatusReadyClick
-    $form.WindowState = [System.Windows.Forms.FormWindowState]::Maximized
-})
+ $form.Add_Shown({
+        $form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized
+        Update-Grid
+        $statusLabel.Text = $script:LangData.StatusReadyClick
+        $form.WindowState = [System.Windows.Forms.FormWindowState]::Maximized
+
+ })
 
 # ==========================================
-# 20. Layer Assembly and Render Preparation
+# 18. Montagem Final e Show
 # ==========================================
-$form.Controls.Add($logTextBox)
-$form.Controls.Add($dataGridView)
-$form.Controls.Add($actionsPanel)
-$form.Controls.Add($headerPanel)
-$form.Controls.Add($footerPanel)
+ $form.Controls.Add($logTextBox)
+ $form.Controls.Add($dataGridView)
+ $form.Controls.Add($actionsPanel)
+ $form.Controls.Add($headerPanel)
+ $form.Controls.Add($footerPanel)
 
 # ==========================================
-# 21. Resize Listener (Manual Right-Docking)
+# 19. Listener de Redimensionamento (Dock Right Manual)
 # ==========================================
-$repositionButtons = {
+ $repositionLangButtons = {
     $marginRight = 10
     $btnGap = 5
+    $btnWidth = 30
     
-    # 1. Reposition Language Buttons (Actions Panel)
-    $actWidth = $actionsPanel.ClientSize.Width
-    $langWidth = 30
+    # Pega a largura atual real do painel (que muda ao redimensionar a janela)
+    $currentWidth = $actionsPanel.ClientSize.Width
     
-    $btnLangES.Left = $actWidth - $langWidth - $marginRight
-    $btnLangEN.Left = $btnLangES.Left - $langWidth - $btnGap
-    $btnLangPT.Left = $btnLangEN.Left - $langWidth - $btnGap
-
-    # 2. Reposition Help/About Buttons (Header Panel)
-    # Fixed: Use headerPanel width instead of actionsPanel width
-    $headWidth = $headerPanel.ClientSize.Width
-    $headBtnWidth = 55
+    # Calcula as posições de trás para frente
+    $posX_ES  = $currentWidth - $btnWidth - $marginRight
+    $posX_EN  = $posX_ES - $btnWidth - $btnGap
+    $posX_POR = $posX_EN - $btnWidth - $btnGap
     
-    $btnAbout.Left = $headWidth - $headBtnWidth - $marginRight
-    $btnHelp.Left  = $btnAbout.Left - $headBtnWidth - $btnGap
-}
+    # Aplica as novas posições
+    $btnLangES.Left = $posX_ES
+    $btnLangEN.Left = $posX_EN
+    $btnLangPT.Left = $posX_POR
+ }
 
-# Attach to the resize event handlers of both relevant panels
-$actionsPanel.Add_Resize($repositionButtons)
-$headerPanel.Add_Resize($repositionButtons)
+ # Associa o evento de resize do painel ao scriptblock acima
+ $actionsPanel.Add_Resize($repositionLangButtons)
 
-# Force a pre-calculation call before displaying the GUI
-& $repositionButtons
+ # Força a execução uma vez para posicionar corretamente antes da janela abrir
+ & $repositionLangButtons
+
 
 # ==========================================
-# 22. Launch Application
+# 20. Mostrar a Interface
 # ==========================================
-[void]$form.ShowDialog()
+ [void]$form.ShowDialog()

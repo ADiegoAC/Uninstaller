@@ -1,0 +1,285 @@
+﻿## [3.4.0] - 2026-02-XX
+### Estável - Resolução de Buracos Negros de Log e Quebra do MuiCache
+
+### Corrigido
+- **[Motor - 3.4.0]** **Bug Crítico de Desempacotamento do MuiCache (Object Unpacking)**: Correção de uma falha severa nas funções `Find-Un1nst4ll3rOrphans` e `Get-Un1nst4ll3rDeepSize`. Após a atualização do `Get-Un1nst4ll3rMuiCache` para retornar objetos estruturados (`@{ExePath=...; RegKeyName=...}`) em vez de strings, as funções consumidoras falhavam silenciosamente ao passar um objeto para `Test-Path` ou `Split-Path`. Isso fazia com que aplicativos perfeitamente válidos (como o DOSBox) fossem descartados como "ExePath missing" ou logados como objetos inteiros (ex: `@{ExePath=C:\...; RegKeyName=C:\...}`). Implementada rotina de desempacotamento (`is [PSCustomObject]`) para extrair a string do caminho antes da validação.
+- **[Motor - 3.4.0]** **Parâmetro Inexistente na Chamada do Orphan Scanner**: Corrigido na função `Get-Un1nst4ll3rScan` a invocação de `Find-Un1nst4ll3rOrphans`, que utilizava o parâmetro incorreto `-KnownApps`. Alterado para o parâmetro correto `-ResolvedPrograms`, conforme definido na assinatura da função. Esse erro impedia que a lista de aplicativos conhecidos fosse passada, quebrando a deduplicação hierárquica.
+- **[UI - 3.4.0]** **Deduplicação Duplicada no Phase 2.5**: Removido o bloco "Phase 2.5" da função `Update-Grid` na Interface, que executava o `Find-Un1nst4ll3rOrphans` uma segunda vez. Como o scan de órfãos já foi integrado ao Motor (Bloco 1.5), a execução redundante na UI fazia com que órfãos válidos, já mapeados pelo Motor, fossem detectados como duplicatas e logados incorretamente como "Skipped (Name already in Registry)".
+
+### Alterado
+- **[Motor - 3.4.0]** **Eliminação dos "Buracos Negros" de Log**: Adicionados logs de depuração (`Write-Un1Log`) em todos os pontos de saída silenciosa (`continue`) dentro da função `Find-Un1nst4ll3rOrphans`. Anteriormente, se um app falhasse na checagem de nome, recurso do Windows ou caminho de download, ele era descartado sem deixar rastro, dificultando o diagnóstico. Agora, todos os pulos são registrados no log com a categoria `[ORPHAN]` e cor `DarkGray`.
+- **[Motor - 3.4.0]** **Precisão Semântica em Logs de Deduplicação**: A mensagem de log ao pular um aplicativo órfão duplicado foi alterada de "Skipped (Name already in Registry)" para "Skipped (Name already mapped in current scan)", refletindo com exatidão que a lista de entrada contém não apenas apps do Registro, mas também de outras fontes já resolvidas.
+
+---
+
+## [3.3.0] - 2026-02-XX
+### Estável - Sistema de Log Semântico Visual e Observabilidade Aprimorada
+
+### Adicionado
+- **[Motor - 3.3.0]** **Sistema de Log Semântico Visual**: Implementação de uma paleta de cores estruturada e padronizada na função `Write-Un1Log`, projetada para permitir a leitura instantânea do estado do sistema em tempo real. A semântica visual aplica as seguintes regras:
+  - 🟢 **Green**: Sucesso/Finalizado (Achou o local direto, calculou o tamanho, completou a fase).
+  - 🔵 **Cyan**: Ação/Descoberta/Fallback (Início de fases, achou algo por atalho/MuiCache, resgatou tamanho por WMI/MSI).
+  - ⚪ **White**: Neutro (Item encontrado no registro, processando app).
+  - 🟡 **Yellow**: Aviso/Ação (Ajuste de pasta, bloqueio de I/O, tentando desinstalar).
+  - 🟣 **Magenta**: Categorias Especiais (Pacotes do sistema, varredura de órfãos).
+  - 🔴 **Red**: Erro/Falha (Não achou o local, erro de I/O, falha ao desinstalar).
+  - ⚫ **DarkGray**: Debug/Ruído (Palavras-chave, filtragens, pulos, rejeições).
+- **[Motor - 3.3.0]** **Legenda de Cores no Cabeçalho**: Documentação visual das cores e seus significados inserida como comentário de destaque no topo do módulo do motor.
+
+### Alterado
+- **[Motor - 3.3.0]** **Refinamento Visual da Fase de Localização (LOCATE)**: As mensagens da etapa de descoberta de caminhos foram ajustadas para refletir com precisão a natureza da evidência. Descobertas via fallback (MuiCache, Atalhos, DisplayIcon, App Paths, Heurística de Disco, MSI COM) agora emitem log em **Cyan** (Ação/Descoberta), enquanto o sucesso direto do Registro permanece em **Green**. Isso elimina a ambiguidade visual entre "o registro me disse" e "eu deduzi/heurística".
+- **[Motor - 3.3.0]** **Refinamento Visual da Fase de Tamanho (SIZE)**: Resgates de tamanho via WMI e MSI UserData agora emitem log em **Cyan** (Fallback), enquanto os tamanhos aceitos diretamente do Registro ou calculados com sucesso no disco emitem **Green**.
+- **[Motor - 3.3.0]** **Classificação de Processamento de Apps**: O log `--- Processing: App ---` alterado de Cyan para **White**, categorizando-o corretamente como um evento Neutro e reservando o Cyan para ações de descoberta subsequentes.
+- **[Motor - 3.3.0]** **Padronização de Erros Críticos**: Mensagens de erro como "Invalid regex in SysPkgBank" alteradas de `DarkRed` para **Red**, unificando a severidade visual de falhas.
+- **[Motor - 3.3.0]** **Reorganização de Comentários e Estrutura**: Limpeza, alinhamento e padronização dos comentários de blocos e prioridades no arquivo do motor. Correção de erros de digitação em comentários (ex: "Desboberta" para "Descoberta", "UnistallString" para "UninstallString"). Nenhuma lógica de negócio foi alterada.
+
+---
+
+## [3.2.0] - 2026-02-XX
+### Estável - Consolidação da Arquitetura Forense Multi-Fonte
+
+### Adicionado
+- **[Motor - 3.2.0]** **Deep Location Discovery Engine**: Introdução de uma nova arquitetura de descoberta baseada em múltiplas fontes independentes de evidência. O motor passa a correlacionar informações provenientes do Registro, MSI, Atalhos, Processos, DisplayIcon, Package Cache e buscas heurísticas antes da determinação final do diretório principal do software.
+
+- **[Motor - 3.2.0]** **MSI UserData Discovery Engine**: Implementação de leitura aprofundada das estruturas MSI UserData para recuperação de propriedades não expostas nas chaves tradicionais de desinstalação, aumentando significativamente a cobertura de aplicações corporativas instaladas via Windows Installer.
+
+- **[Motor - 3.2.0]** **DisplayIcon Discovery Engine**: O campo `DisplayIcon` passa a integrar formalmente a cadeia de descoberta de localização, sendo validado fisicamente e utilizado como evidência complementar na determinação do executável principal e da pasta de instalação.
+
+- **[Motor - 3.2.0]** **Process Discovery Engine**: Nova camada de descoberta baseada em processos ativos do sistema operacional. Quando disponíveis, caminhos obtidos através de executáveis carregados em memória passam a ser utilizados como evidência de alta confiabilidade.
+
+- **[Motor - 3.2.0]** **Shortcut Discovery Engine (Expandido)**: Ampliação da análise de atalhos (`.lnk`) para capturar e correlacionar propriedades adicionais como `TargetPath`, `WorkingDirectory`, `Arguments`, `IconLocation` e origem física do atalho.
+
+- **[Motor - 3.2.0]** **Sistema de Evidências Correlacionadas**: Criação de um mecanismo interno para consolidação e validação cruzada das informações obtidas por múltiplas fontes antes da definição do resultado final.
+
+- **[Motor - 3.2.0]** **Expansão de Metadados de Inventário**: Inclusão da captura estruturada dos seguintes atributos adicionais:
+  - `Publisher`
+  - `ProductCode`
+  - `UpgradeCode`
+  - `InstallSource`
+  - `InstallLocation`
+  - `EstimatedSize`
+  - `QuietUninstallString`
+  - `DisplayIcon`
+
+- **[Motor - 3.2.0]** **Classificação de Evidências por Confiabilidade**: Implementação de pesos internos para priorização automática das fontes de descoberta quando múltiplos caminhos candidatos são encontrados para um mesmo software.
+
+### Alterado
+- **[Motor - 3.2.0]** **Modularização Completa da Cadeia de Descoberta**: Reestruturação interna do pipeline de localização através da separação em motores especializados independentes (Registry, MSI, Shortcut, DisplayIcon, Process e Deep Discovery), reduzindo acoplamentos e facilitando manutenção futura.
+
+- **[Motor - 3.2.0]** **Validação Física Obrigatória de Caminhos**: O motor deixa de confiar exclusivamente nos valores retornados pelo Registro e passa a validar fisicamente todas as evidências encontradas antes da definição da localização final.
+
+- **[Motor - 3.2.0]** **Refinamento da Descoberta de Diretórios de Instalação**: Melhorias na correlação entre `InstallLocation`, `InstallSource`, `DisplayIcon`, atalhos e executáveis ativos para aumentar a precisão em softwares legados e corporativos.
+
+- **[Motor - 3.2.0]** **Aprimoramento do Motor de Remoção Forense**: As novas propriedades MSI e de inventário passam a servir como base para futuras rotinas de remoção de resíduos e rastreamento de componentes relacionados.
+
+- **[Motor - 3.2.0]** **Otimização de Performance e Reutilização de Evidências**: Eliminação de consultas redundantes ao disco, Registro e MSI através do compartilhamento interno de resultados entre motores especializados.
+
+### Corrigido
+- **[Motor - 3.2.0]** **Redução de Falsos Positivos de Localização**: Correção de cenários onde instaladores armazenados em `Package Cache`, diretórios temporários ou componentes auxiliares eram incorretamente classificados como diretório principal do software.
+
+- **[Motor - 3.2.0]** **Melhoria na Determinação do Executável Principal**: Ajustes na validação cruzada entre `DisplayIcon`, atalhos e estrutura física do aplicativo reduziram a seleção incorreta de launchers, helpers, bootstrapers e desinstaladores.
+
+- **[Motor - 3.2.0]** **Compatibilidade Aprimorada com Aplicações Corporativas**: Correções específicas para softwares instalados via MSI, InstallShield, wrappers proprietários e distribuidores corporativos que apresentam metadados inconsistentes no Registro.
+
+### Integração
+- **[Integração - 3.2.0]** **Expansão do Schema do Cache JSON**: O arquivo `Un1nst4ll3r_ScanResult.json` passa a armazenar os novos metadados de inventário e as evidências utilizadas durante a descoberta dos softwares.
+
+- **[Integração - 3.2.0]** **Pipeline Unificado de Evidências**: Padronização do fluxo de dados entre os motores Registry, MSI, Shortcut, DisplayIcon e Process Discovery através de um modelo único de consolidação.
+
+- **[Integração - 3.2.0]** **Persistência de Evidências Forenses**: Inclusão da capacidade de armazenar informações de origem e rastreabilidade das descobertas para suporte a auditoria, depuração e futuras análises forenses.
+
+- **[Integração - 3.2.0]** **Normalização de Dados Multi-Fonte**: Implementação de regras de consolidação para eliminar duplicidades e conflitos entre informações provenientes de Registro, MSI, atalhos, processos e artefatos do sistema.
+
+- **[Integração - 3.2.0]** **Ampliação da Base de Inventário Persistida**: Os novos campos `Publisher`, `ProductCode`, `UpgradeCode`, `InstallSource`, `InstallLocation`, `EstimatedSize`, `QuietUninstallString` e `DisplayIcon` passam a integrar a estrutura persistida utilizada pela UI e pelos módulos internos.
+
+### UI
+- **[UI - 3.2.0]** **Preparação para Metadados Avançados**: Estruturação da interface para consumo dos novos atributos de inventário coletados pelo motor, permitindo futura exposição de informações MSI e forenses diretamente no Grid.
+
+- **[UI - 3.2.0]** **Suporte à Visualização de Evidências**: Inclusão da infraestrutura necessária para futura exibição das origens utilizadas pelo motor durante a determinação da localização e classificação dos softwares.
+
+- **[UI - 3.2.0]** **Ampliação da Observabilidade Operacional**: Integração expandida com o framework de logs categorizados para acompanhamento detalhado das etapas de descoberta, validação e consolidação de evidências.
+
+- **[UI - 3.2.0]** **Preparação para Ferramentas de Diagnóstico Forense**: Adequações estruturais na interface visando suportar futuras telas de análise, rastreabilidade e inspeção de artefatos coletados pelo motor.
+
+---
+
+## [3.1.0] - 2026-01-22
+### Adicionado
+- **[Motor - 3.1.0]** **Funções Estruturais de Remoção e Limpeza**: Implementação inicial das rotinas `Start-Un1nst4ll3rApp` (execução do desinstalador oficial) e `Remove-Un1nst4ll3rTraces` para varredura agressiva de resíduos em diretórios comuns de sistema (`AppData`, `ProgramData`) usando heurística de palavras-chave.
+- **[UI / Motor - 3.1.0]** **Arquitetura de Cache Local via JSON**: Criação da função `Load-GridFromJson` associada ao arquivo de persistência `Un1nst4ll3r_ScanResult.json`. O grid de dados passa a ser populado instantaneamente a partir do cache na inicialização do formulário (`$form.Add_Shown`), poupando o usuário do processo lento de escaneamento completo do registro a cada abertura.
+- **[UI - 3.1.0]** **Nova Barra de Ações e Janela Dedicada de Logs**: Desdobramento e redefinição dos controles de controle. O botão `SCAN SYSTEM` passa a atuar exclusivamente na recarga instantânea do Grid via JSON. Foram introduzidos os botões `NEW SCAN` (para forçar a varredura profunda no disco e registro) e `VIEW LOG`, que invoca uma janela filha em formato de terminal para exibir o dump completo de depuração.
+- **[Motor - 3.1.0]** **Padronização e Categorização do Framework de Log**: Otimização profunda da função `Write-Un1Log` para operar de forma centralizada com suporte a tags categorizadas (ex: `[SCAN]`, `[MS-PKG]`, `[LOCATE]`, `[SIZE]`, `[ICON]`). Inclusão de carimbos de data/hora (*timestamps*) com precisão de milissegundos e conexão direta com a interface de status por meio da ação global `$Global:Un1LogAction`.
+- **[Integração - 3.1.0]** **Externalização de Pacotes do Sistema (SysPkgBank.json)**: Substituição da antiga lógica embutida e rígida de descoberta da Microsoft por um banco de dados dinâmico estruturado em JSON (`Un1nst4ll3r_SysPkgBank.json`). O arquivo mapeia expressões regulares de pacotes conhecidos (*.NET Framework*, *Visual C++ Redistributables*) para localizar os caminhos raiz corretos e injetar ícones de fallback do instalador (`msiexec.exe`).
+- **[Motor - 3.1.0]** **Mecanismo de Sizing via Package Cache**: Update do motor de dimensionamento `Get-Un1nst4ll3rSizeEngine` para contornar problemas de pacotes Microsoft que ocultam ou omitem seu tamanho no registro. O algoritmo busca pelo instalador original armazenado na pasta oculta `Package Cache` para extrair um valor físico real, impedindo leituras duplicadas ou loops causados pelos *Hard Links* da pasta `WinSxS`.
+- **[Motor - 3.1.0]** **Otimização de Heurística de Ícones com Cache em RAM**: Criação do repositório em memória `$Global:MemoryShortcuts` para reter atalhos previamente mapeados e propriedades `WorkingDirectory`. A busca e resolução de caminhos por arquivos `.lnk` agora lê diretamente a memória RAM, reduzindo chamadas custosas de I/O de disco na fase de desempate de caminhos.
+
+---
+
+## [3.0.0] - 2026-01-20
+### Estável - Arquitetura de Separação Radical e Resiliência do Motor
+- **[Motor - 3.0.0]** **Separação Radical de Escopos (Fase 1 vs Fase 2)**: Reestruturação completa do fluxo de execução. A busca foi dividida em duas etapas totalmente independentes: a Fase 1 consolida e fixa unicamente o diretório físico (**Local**); apenas com este garantido, a Fase 2 inicia a determinação do executável principal (**ExePath**). Isso eliminou de vez o conflito de variáveis e os loops cegos herdados da v2.2.
+- **[Motor - 3.0.0]** **Heurística de Persistência (Não-Desistência)**: Modificação profunda na função `Find-Un1nst4ll3rMainExe` para impedir abortos prematuros em subpastas. Ao varrer diretórios, se o motor entra em uma subpasta inválida (como uma pasta `\uninstall` contendo apenas arquivos na blacklist), ele ignora o bloco morto e continua a busca nas subpastas restantes (`\bin`, `\App`) até esgotar as possibilidades físicas do disco.
+- **[Motor - 3.0.0]** **Navegação Pai Inteligente (Subida de Nível)**: Implementação de inteligência de árvore de diretórios. Se o caminho extraído do registro apontar para subpastas genéricas ou secundárias (ex: `\Support`, `\bin`), o motor automaticamente sobe um nível (`..`) para varrer a pasta raiz do aplicativo, resolvendo problemas crônicos de mapeamento de softwares legados (ex: *Logicmaster 90-30*).
+- **[Motor - 3.0.0]** **Blacklist Dinâmica Baseada no `UninstallString`**: Substituição do filtro de exclusão estático por uma validação dinâmica. O script limpa aspas e parâmetros do desinstalador oficial registrado para banir estritamente aquele arquivo específico (ex: `unins000.exe`). Termos genéricos na blacklist não bloqueiam mais os executáveis legítimos de softwares que carregam a palavra "Uninstaller" no próprio nome (ex: *Smarty Uninstaller 4*).
+- **[Motor - 3.0.0]** **Substituição de Variáveis de Ambiente por Métodos .NET**: Remoção das chamadas tradicionais do PowerShell (como `$env:ProgramFiles`) e adoção de métodos nativos do sistema operacional via `[System.Environment]::GetFolderPath()`. Isso blinda o script contra desvios e redirecionamentos inesperados de arquitetura causados pelo contexto de execução (prompts de 32-bits vs 64-bits / caminhos redirecionados para `SysWOW64`).
+- **[Motor - 3.0.0]** **Mapeamento de Inicializadores Não-Executáveis**: Inclusão de suporte e priorização para scripts de inicialização `*.bat` e `*.cmd` na fase de desempate de arquivos, garantindo que ferramentas orquestradas por arquivos de lote não caiam incorretamente na classificação de "Vestígio".
+- **[Motor - 3.0.0]** **Refinamento do Campo "Iniciar Em" de Atalhos**: Alteração no parser de arquivos `.lnk` para ler e priorizar a propriedade `WorkingDirectory` antes do `TargetPath`. Isso permite isolar a pasta real de instalação de softwares que usam wrappers ou redirecionadores armazenados na pasta `System32`.
+- **[Integração - 3.0.0]** **Motor de Depuração Forense (JSON Live no Terminal)**: Adicionado um interceptador dinâmico de logs que imprime diretamente no terminal um bloco JSON estruturado para cada ícone (`DisplayIcon`) e atalho analisado, detalhando as propriedades extraídas (`Destino`, `IniciarEm`, `FoiUsado`) e o motivo exato de um eventual descarte para facilitar o diagnóstico em tempo real.
+- **[UI / Motor - 3.0.0]** **Tratamento de Exceções e Ordenação de Runtimes**: Correção do comportamento de pacotes de sistema e runtimes (`Redistributable`, `Drivers`, `.NET Framework`). O motor força o `Status = "OK"`, `ExePath = ""` e `Tamanho = 0` (ou `$null`) de forma limpa, evitando travamentos de estouro numérico na Grid e garantindo a ordenação matemática perfeita da coluna na UI.
+
+### Corrigido
+- **[Motor - 3.0.0]** **Bug de Sintaxe no Match de Runtimes**: Correção de um erro de digitação crítico no operador de correspondência de strings onde o ponto de propriedade estava ausente, impedindo a filtragem correta (`$Prog Nome` corrigido para `$Prog.Nome`).
+- **[Motor - 3.0.0]** **Limpeza de Escopo via PSScriptAnalyzer**: Expulsão das variáveis órfãs e redundantes `localFound` e `calcSize` que haviam sido alocadas sem uso no escopo de execução profunda da função principal.
+
+---
+
+## [2.2.0] - 2025-08-15
+### Adicionado
+- **[Motor - 2.2.0]** **Análise Dinâmica de Processos e Serviços**: Introdução de monitoramento em tempo real via `Get-Process` e análise de serviços ativos do Windows para tentar capturar caminhos de instalação através de aplicativos que estavam em execução no sistema.
+
+### Alterado
+- **[Integração - 2.2.0]** **Mistura de Escopos de Busca (Calcanhar de Aquiles)**: Tentativa de calcular e validar o diretório `Local` e o `ExePath` simultaneamente durante o ciclo de análise ativa. A abordagem poluiu as variáveis internas do motor, gerando caminhos corrompidos (como o `uninstall.exe` ou `helper.exe` sendo eleitos como o executável principal) e provocando um aumento acentuado de falsos positivos classificados como "Vestígio".
+
+---
+
+## [2.0.0] - 2024-05-16
+### Estável - Consolidação da Heurística e Rollback Estratégico
+- **[Motor - 2.0.0]** Consolidação da arquitetura heurística definitiva. Retirada a priorização de Processos/Serviços em tempo real que causou regressão (aumento de falsos "Vestígios"), retornando à abordagem baseada em arquivos e registro que se provou mais precisa.
+- **[Motor - 2.0.0]** O status "Vestigio" agora é atribuído com precisão apenas quando a pasta existe, mas não há um EXE válido (respeitando Runtimes/Drivers).
+- **[Integração - 2.0.0]** Fluxo de dados validado com a nova propriedade `ExePath`, garantindo que a UI receba o caminho do executável principal sem depender de ícones do Windows.
+
+---
+
+## [1.9.0] - 2024-05-15
+### Adicionado
+- **[Motor - 1.9.0]** Função `Find-Un1nst4ll3rMainExe` (Fallback Inteligente): Busca sequencial na raiz e na primeira camada de subpastas, priorizando diretórios `bin` ou com o nome do app.
+- **[Motor - 1.9.0]** Extração de palavra-chave para busca de EXEs: A lógica que limpa o nome do app para achar pastas agora é usada para achar o EXE (ex: "VLC media player" busca por `*VLC*.exe`).
+- **[Motor - 1.9.0]** Fallback de Menor Nome: Se nenhum nome de EXE bater com o app, o script escolhe o arquivo `.exe` válido com o menor nome no diretório (ex: `vlc.exe` vence `vlc-cache-gen.exe`).
+- **[Motor - 1.9.0]** Propriedade `ExePath` adicionada ao retorno do Motor.
+
+### Alterado
+- **[Motor - 1.8.0]** Refinamento do Deep Size: Se o Registro forneceu o `EstimatedSize`, o cálculo físico em disco (`Get-ChildItem -Recurse`) é ignorado para economizar tempo e evitar medições incorretas em pastas compartilhadas. O tamanho físico só é calculado se o registro estiver vazio.
+- **[Motor - 1.8.0]** Blacklist de EXEs: Adição de `uninstall`, `unins`, `setup`, `helper`, `crash` na lista de exclusão para a busca do executável principal.
+
+---
+
+## [1.8.0] - 2024-05-14
+### Adicionado
+- **[Motor - 1.7.0]** Função `Get-NormalizedName`: Normalização de strings removendo espaços, traços e underscores, e convertendo para minúsculas. Permite que "Logicmaster 90-30" corresponda a "LM90.exe".
+- **[Motor - 1.7.0]** Detecção de Runtimes e Drivers: Implementação de regex (`Redistributable|Runtime|Framework|Driver|...`) para identificar dependências do sistema. Estas recebem `Status = "OK"` and `ExePath = ""`, eliminando falsos positivos.
+- **[Motor - 1.7.0]** Busca em Pastas Pai: Se o `InstallLocation` aponta para uma subpasta genérica (ex: `\Support`, `\Bin`), o script automaticamente inclui a pasta pai na busca do EXE.
+- **[Motor - 1.7.0]** Correção de Pasta Raiz: Se o EXE é encontrado na pasta pai, o `$prog.Local` é atualizado para a pasta raiz, garantindo que o cálculo de tamanho abrange todo o app.
+
+### Alterado
+- **[Motor - 1.7.0]** Nova Lógica de Status: 
+  - `OK`: Pasta existe e possui EXE (ou é um Runtime detectado).
+  - `Vestigio`: Pasta existe, mas não possui EXE válido (apenas DLLs/configs).
+  - `Orfao`: A pasta registrada não existe no disco.
+  - `SemLocal`: O registro não forneceu `InstallLocation` e a heurística falhou.
+
+---
+
+## [1.6.0] - 2024-05-13
+### Adicionado
+- **[Motor - 1.6.0]** Consulta ao Banco de Dados MSI (Tentativa 2.5): Uso do COM Object `WindowsInstaller.Installer` para ler as propriedades `InstallLocation` e `InstallSource` de apps instalados via Windows Installer.
+- **[Motor - 1.6.0]** Filtros Anti-Lixo MSI: Ignora caminhos retornados pelo banco MSI que apontam para `Package Cache`, `Windows\TEMP`, pastas `IXP` e pastas hexadecimais raiz (ex: `c:\61bec893cfb98cb796e5\`).
+- **[Motor - 1.6.0]** Roubo de Palavra-chave do Cache: Se o `UninstallString` aponta para o `Package Cache`, o script extrai a palavra inicial (ex: "python" de "python-3.14.5-amd64.exe") e a utiliza como prioridade na busca em disco, recusando o Cache como local de instalação.
+- **[Motor - 1.6.0]** Variáveis de ambiente nativas na Tentativa 4: Substituição de chamadas .NET lentas por variáveis nativas do PowerShell (`$env:LOCALAPPDATA`, `$env:ProgramFiles`) e adição crítica do caminho `$env:LOCALAPPDATA\Programs` (padrão para Python, VSCode, etc.). Adição de `$env:SystemDrive` e `$env:SystemRoot` para suportar instalações em drives diferentes de `C:\`.
+
+---
+
+## [1.4.0] - 2024-05-12
+### Adicionado
+- **[Motor - 1.3.0]** Metadados Expandidos: As propriedades `InstallDate`, `HelpLink`, `UninstallString`, `NoRemove`, `NoModify` e `NoRepair` são agora extraídas do Registro e retornadas no objeto.
+- **[Integração - 1.1.0]** Exportação de JSON: A UI agora gera automaticamente o arquivo `Un1nst4ll3r_ScanResult.json` na mesma pasta do script após o scan, permitindo análise forense externa e debug de heurística.
+- **[UI - 0.5.0]** Auto-Resize da coluna Local: Configuração da coluna "Local" com `AutoSizeMode = Fill` e `MinimumWidth = 150`, garantindo que ela ocupe o espaço restante sem criar barra de rolagem horizontal.
+- **[UI - 0.5.1]** Controle Manual de Ordenação: Implementação das variáveis `$script:lastSortedColumn` e `$script:lastSortDirection`. O WinForms perde o estado de ordenação em grids não vinculados a bancos de dados; este fix garante que cliques consecutivos no header invertam a ordem corretamente.
+
+---
+
+## [1.0.0] - 2024-05-12
+### Estável - Lançamento Alcançado
+- **[Motor - 1.0.0]** API de varredura considerada estável e completa para a fase de Scanner.
+- **[UI - 1.0.0]** Interface gráfica validada com ordenação e formatação perfeitas.
+- **[Integração - 1.0.0]** Fluxo de dados síncrono e feedback visual validados em ambiente real.
+
+---
+
+## [0.9.0] - 2024-05-11
+### Adicionado
+- **[UI - 0.4.0]** Implementação da SplashScreen sem bordas para feedback visual durante o carregamento.
+- **[Integração - 0.3.0]** Injeção de dependência de Log: a UI agora define o `$Global:Un1LogAction` antes do scan.
+- **[Integração - 0.3.0]** Uso estratégico de `[System.Windows.Forms.Application]::DoEvents()` para evitar congelamento da UI durante o scan síncrono, permitindo a atualização em tempo real da SplashScreen.
+
+---
+
+## [0.8.0] - 2024-05-10
+### Alterado
+- **[Motor - 0.8.0]** Mudança de paradigma: A propriedade `Tamanho` agora retorna `[long]` (Bytes puros) ou `$null` ao invés de strings ("10 MB"). Isso é fundamental para a ordenação matemática.
+- **[UI - 0.3.0]** Refatoração do preenchimento do Grid para suportar o recebimento de Bytes.
+- **[UI - 0.3.0]** Formatação dinâmica na inserção de dados: Conversão de Bytes para KB/MB/GB ou "N/A".
+
+### Corrigido
+- **[UI - 0.3.1]** Exceção `System.ArgumentException: Objeto deve ser do tipo Int64` ao clicar no header de Tamanho. Resolvido com a criação de uma coluna oculta (`TamanhoBytes`) que contém apenas números, separando o dado de exibição do dado de ordenação.
+- **[Integração - 0.2.0]** Evento `Add_ColumnHeaderMouseClick` implementado para interceptar o clique no header e ordenar pela coluna oculta de Bytes.
+
+---
+
+## [0.7.0] - 2024-05-09
+### Adicionado
+- **[Motor - 0.7.0]** Heurística de Caminho (Fases 3 e 4) para apps sem `InstallLocation`.
+- **[Motor - 0.7.0]** Parser avançado do `UninstallString` (Regex para parâmetros `-f"...\.isu"` do InstallShield antigo).
+- **[Motor - 0.7.0]** Parser de Atalhos (`.lnk`) do Menu Iniciar e Desktop via `WScript.Shell`.
+- **[Motor - 0.7.0]** Detecção de programas órfãos (quando a pasta de instalação não existe no disco).
+- **[UI - 0.2.0]** Coloração de linhas de programas órfãos em vermelho no Grid.
+
+### Corrigido
+- **[Motor - 0.7.1]** Bug de codificação (Encoding UTF-8 vs Windows-1252): alteração de "Órfão" para "Orfao" para evitar quebras de parser (Token inesperado) em sistemas Windows em português.
+
+---
+
+## [0.6.0] - 2024-05-08
+### Adicionado
+- **[Motor - 0.5.0]** Função `Get-Un1nst4ll3rDeepSize` (Fase 2).
+- **[Motor - 0.5.0]** Cálculo de tamanho físico em disco via `Get-ChildItem -Recurse -Force` para apps onde o `EstimatedSize` do registro é inexistente.
+- **[Motor - 0.5.0]** Variável de ambiente `Local` adicionada ao retorno do Motor para suportar cálculos de Deep Size e checagem de Órfãos futuros.
+
+---
+
+## [0.5.0] - 2024-05-07
+### Adicionado
+- **[Motor - 0.4.0]** Fallback de Fabricante: leitura de metadados do arquivo `.exe` via `[System.Diagnostics.FileVersionInfo]` quando o registro não fornece o `Publisher`.
+- **[Motor - 0.4.0]** Limpeza de strings de fabricantes de apps da Store (remoção do prefixo `CN=`).
+- **[UI - 0.1.0]** Criação do design base: Painel de cabeçalho, barra de ações e rodapé (Status Bar).
+- **[UI - 0.1.0]** Truque de DPI Awareness (`SetProcessDPIAware`) via C# embutido para evitar embaçamento em monitors com zoom (125%, 150%).
+
+---
+
+## [0.4.0] - 2024-05-06
+### Adicionado
+- **[Motor - 0.3.0]** Filtro de Aplicativos Invisíveis do Sistema: Oculta apps da Microsoft onde `AppListEntry = none`.
+- **[Motor - 0.3.0]** Filtro de Componentes Nativos: Oculta apps onde o fabricante é exatamente "Microsoft Windows".
+- **[Motor - 0.3.0]** Filtro de GUIDs puros (ex: `1527c705-...`) para remover ruído de interfaces do sistema no Grid.
+
+---
+
+## [0.3.0] - 2024-05-05
+### Adicionado
+- **[Motor - 0.2.0]** Integração com a Microsoft Store (AppX) via `Get-AppxPackage`.
+- **[Motor - 0.2.0]** Filtro de Frameworks base (`IsFramework -eq $false`) e apps não assinados (`SignatureKind -ne "None"`).
+
+---
+
+## [0.2.0] - 2024-05-04
+### Adicionado
+- **[UI - 0.0.1]** Esboço inicial da janela principal e DataGridView.
+- **[Integração - 0.1.0]** Primeiro Dot-Sourcing (`. .\Un1nst4ll3r.ps1`) chamando a função de scan e preenchendo o Grid de forma bruta.
+
+---
+
+## [0.1.0] - 2024-05-03
+### Adicionado
+- **[Motor - 0.1.0]** Scan básico do Registro do Windows (Win32).
+- **[Motor - 0.1.0]** Varredura nas 4 chaves padrão (`HKLM/HKCU` e `WOW6432Node`).
+- **[Motor - 0.1.0]** Filtro inicial de componentes do sistema (`SystemComponent`) e chaves pai (`ParentKeyName`).
+- **[Motor - 0.1.0]** Arquitetura base de retorno via `PSCustomObject`.
