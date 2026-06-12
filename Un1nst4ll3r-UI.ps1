@@ -1,6 +1,6 @@
 # ======================================================================
-#  Un1nst4ll3r - Graphical User Interface (Chapter 2)
-#  Version: 1.5 (Multi-Language & UI Refinements)
+#  Un1nst4ll3r - Graphical User Interface
+#  Version: 1.5.1
 # ======================================================================
 
 # Forces the Windows terminal to use UTF-8 to display accents correctly
