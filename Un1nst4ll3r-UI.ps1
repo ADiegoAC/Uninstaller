@@ -52,23 +52,19 @@ if (Test-Path $enginePath) {
     exit
 }
 
-# Load Markdown Viewer Library if present (Moved after Engine import to allow logging)
-$mdViewerDll = Join-Path $AppRoot "MdViewer.dll"
-$commonMarkDll = Join-Path $AppRoot "CommonMark.dll"
+# Load Markdown Viewer Library if present
+ $markdigDll = Join-Path $AppRoot "Markdig.dll"
 
-if ((Test-Path $mdViewerDll) -and (Test-Path $commonMarkDll)) {
+if (Test-Path $markdigDll) {
     try {
-        # Unblock files to prevent silent load failures due to Windows security "Zone.Identifier"
-        Unblock-File -Path $commonMarkDll, $mdViewerDll -ErrorAction SilentlyContinue
-
-        # Load using Reflection into the Load context to ensure dependencies are resolved
-        [System.Reflection.Assembly]::LoadFrom($commonMarkDll) | Out-Null
-        [System.Reflection.Assembly]::LoadFrom($mdViewerDll) | Out-Null
-        
-        Write-Un1Log -Category "INIT" -Message "Markdown Viewer library loaded successfully." -Color Green
+        Unblock-File -Path $markdigDll -ErrorAction SilentlyContinue
+        Add-Type -Path $markdigDll
+        Write-Un1Log -Category "INIT" -Message "Markdig library loaded successfully." -Color Green
     } catch {
-        Write-Un1Log -Category "INIT" -Message "Markdown library failed to load: $($_.Exception.Message)" -Color Red
+        Write-Un1Log -Category "INIT" -Message "Markdig library failed to load: $($_.Exception.Message)" -Color Red
     }
+} else {
+    Write-Un1Log -Category "INIT" -Message "Markdig.dll not found. Help will display raw text." -Color Yellow
 }
 
 # ==========================================
@@ -1079,8 +1075,7 @@ $btnLangES.Add_Click({
 })
 
 # --- Help Button Click Event ---
-$btnHelp.Add_Click({
-    # Detect the correct README file based on current language
+ $btnHelp.Add_Click({
     $readmeFile = switch ($script:CurrentLang) {
         "pt-BR" { "README_POR.md" }
         "es-ES" { "README_ES.md" }
@@ -1093,40 +1088,89 @@ $btnHelp.Add_Click({
     }
 
     $helpForm = New-Object System.Windows.Forms.Form
-    $helpForm.Text = "Un1nst4ll3r - Documentation (Markdown)"
+    $helpForm.Text = "Un1nst4ll3r - Documentation"
     $helpForm.Size = New-Object System.Drawing.Size(800, 600)
     $helpForm.StartPosition = "CenterParent"
     $helpForm.BackColor = [System.Drawing.Color]::FromArgb(18, 18, 18)
     $helpForm.Icon = $form.Icon
 
-    $contentBox = $null
-    # Check if the assembly is actually loaded in the current domain
-    if ([AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.FullName -match "MdViewer" }) {
+    # Lê o Markdown como texto puro
+    $mdText = Get-Content -Path $readmePath -Raw -Encoding UTF8
+    $htmlBody = ""
+
+    # Verifica se o Markdig (que já carregou na Seção 4) está disponível
+    $markdigAssembly = [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.FullName -match "Markdig" } | Select-Object -First 1
+    
+    if ($markdigAssembly) {
         try {
-            # Use New-Object with explicit TypeName for better resolution in UI event blocks
-            $contentBox = New-Object -TypeName "MdViewer.MarkdownViewer" -ErrorAction Stop
-            $contentBox.Dock = "Fill"
-            $contentBox.Markdown = Get-Content -Path $readmePath -Raw -Encoding UTF8
+            # Converte Markdown para HTML usando o Markdig
+            $markdownType = $markdigAssembly.GetType("Markdig.Markdown")
+            $htmlBody = $markdownType::ToHtml($mdText)
         } catch {
-            Write-Un1Log -Category "HELP" -Message "MdViewer instantiation failed: $($_.Exception.Message)" -Color Yellow
+            # Fallback caso o Markdig falhe
+            $htmlBody = "<pre style='white-space: pre-wrap;'>$mdText</pre>"
         }
+    } else {
+        # Fallback se o Markdig não tiver carregado
+        $htmlBody = "<pre style='white-space: pre-wrap;'>$mdText</pre>"
     }
 
-    # Fallback if instantiation failed or assembly was never loaded
-    if ($null -eq $contentBox) {
-        $contentBox = New-Object System.Windows.Forms.RichTextBox
-        $contentBox.ReadOnly = $true
-        $contentBox.Dock = "Fill"
-        $contentBox.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 30)
-        $contentBox.ForeColor = [System.Drawing.Color]::White
-        $contentBox.Font = New-Object System.Drawing.Font("Consolas", 10)
-        $contentBox.Text = Get-Content -Path $readmePath -Raw -Encoding UTF8
-    }
+    # Cria o WebBrowser para exibir o HTML
+    $contentBox = New-Object System.Windows.Forms.WebBrowser
+    $contentBox.Dock = "Fill"
+    
+    # HTML com CSS ajustado para Emojis Coloridos e Fonte de Leitura
+    $styledHtml = @"
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<style>
+  body { 
+    background-color: #1E1E1E; 
+    color: #D4D4D4; 
+    font-family: Consolas, 'Segoe UI Emoji', Tahoma, sans-serif;
+    padding: 20px; 
+    margin: 0; 
+  }
+  a { color: #569CD6; }
+  code { 
+    background-color: #2D2D2D; 
+    padding: 2px 5px; 
+    border-radius: 3px; 
+    font-family: Consolas, monospace; /* Códigos continuam com fonte de terminal */
+  }
+  pre { 
+    background-color: #2D2D2D; 
+    padding: 10px; 
+    border-radius: 5px; 
+    overflow-x: auto; 
+  }
+  pre code { 
+    background-color: transparent; 
+    padding: 0; 
+    font-family: Consolas, monospace;
+  }
+  h1, h2, h3 { color: #00BFFF; border-bottom: 1px solid #333; padding-bottom: 5px; }
+  blockquote { border-left: 4px solid #569CD6; padding-left: 10px; color: #9CDCFE; margin-left: 0; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #444; padding: 8px; text-align: left; }
+  th { background-color: #2D2D2D; }
+  img { max-width: 100%; height: auto; }
+</style>
+</head>
+<body>
+ $htmlBody
+</body>
+</html>
+"@
+
+    $contentBox.DocumentText = $styledHtml
 
     $helpForm.Controls.Add($contentBox)
-    $helpForm.ShowDialog($form)
-
+    $helpForm.ShowDialog()
 })
+
 # --- About Button Click Event ---
 $btnAbout.Add_Click({
     $aboutForm = New-Object System.Windows.Forms.Form
