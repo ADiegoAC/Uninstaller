@@ -935,7 +935,7 @@ function Get-Un1nst4ll3rDeepSize {
     }
 
     $updatedList = [System.Collections.ArrayList]::new()
-    $genericFolderNames = @("support", "system", "bin", "helper", "config", "resources", "data", "common", "lib", "tools", "files", "uninstall", "drivers", "plugins", "extensions", "modules", "games", "redist")
+    $genericFolderNames = @("support", "system", "bin", "helper", "config", "resources", "data", "common", "lib", "tools", "files", "uninstall")
     $invalidHeuristicRoots = @("microsoft", "windows apps", "common files", "dotnet", "reference assemblies")
 
     foreach ($prog in $ProgramList) {
@@ -951,33 +951,6 @@ function Get-Un1nst4ll3rDeepSize {
         Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutTargets" -Value $prog.ShortcutTarget
         Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutPaths" -Value $(if ($prog.PSObject.Properties.Name -contains 'ShortcutPath') { $prog.ShortcutPath } else { "" })
         Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutScopes" -Value $(if ($prog.PSObject.Properties.Name -contains 'ShortcutScope') { $prog.ShortcutScope } else { "" })
-
-        # ======================================================================
-        # SHORT-CIRCUIT: Se o Registro já deu tudo, pula heurísticas complexas
-        # Aplica a regra: "Registro é Rei, se deu as pistas pula tudo".
-        # Resolve 90% dos apps (incluindo todo o Office) em 1 milissegundo.
-        # ======================================================================
-        if (![string]::IsNullOrWhiteSpace($prog.Local) -and (Test-Path $prog.Local -ErrorAction SilentlyContinue) -and ![string]::IsNullOrWhiteSpace($prog.DisplayIcon)) {
-            $cleanIconEarly = $prog.DisplayIcon -replace '\"', '' -replace ',\d+$', ''
-            
-            # Valida se o ícone do registro é um arquivo real e não é um recurso do Windows
-            if ((Test-Path $cleanIconEarly -ErrorAction SilentlyContinue) -and $cleanIconEarly -notmatch 'shell32|imageres|Windows\\SysWOW64|Windows\\System32') {
-                $prog.Local = $prog.Local.TrimEnd('\')
-                $prog.RootPath = $prog.Local
-                $prog.RootSource = "Registry.Full"
-                
-                # Se o ícone do registro aponta para um .exe, esse É o app principal.
-                if ($cleanIconEarly -match '\.exe$') { 
-                    $prog.ExePath = $cleanIconEarly 
-                }
-                
-                Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Registry.Full"
-                Write-Un1Log -Category "LOCATE" -Message "Perfect registry data. Skipping MuiCache, Shortcuts and Heuristics." -Color Green
-                
-                $updatedList.Add($prog) | Out-Null
-                continue # Pula para o próximo app imediatamente
-            }
-        }
 
         # ── PRIORIDADE 1: Json Pacotes Microsoft ──
         if ([string]::IsNullOrWhiteSpace($prog.Local)) {
@@ -1049,7 +1022,7 @@ function Get-Un1nst4ll3rDeepSize {
                  Write-Un1Log -Category "LOCATE" -Message "MuiCache rejected (Setup/Invalid path): $muiExe" -Color Blue
             }
         }
-        
+
         # ── PRIORIDADE 3: Shortcut Cache (Program icon -> ExePath) ──
         if (![string]::IsNullOrWhiteSpace($prog.Nome)) {
             $safeAppName = $prog.Nome -replace '\(.*\)', '' -replace '\s+\d+.*', '' -replace '[^\w\s\-+]', ''
@@ -1059,16 +1032,7 @@ function Get-Un1nst4ll3rDeepSize {
                 $_.LnkName -like "*$safeAppName*" 
             }
             
-            # NOVA LÓGICA: Classificar por NÍVEL DE CONFIANÇA para evitar falsos positivos como "Install Arduino Drivers"
-            $exactMatch = @($lnkFiles | Where-Object { $_.LnkName -ieq $prog.Nome })
-            $startsWithMatch = @($lnkFiles | Where-Object { $_.LnkName -ilike "$($prog.Nome)*" -and $_.LnkName -ine $prog.Nome })
-            $containsMatch = @($lnkFiles | Where-Object { $_.LnkName -ilike "*$($prog.Nome)*" -and $_.LnkName -inotlike "$($prog.Nome)*" })
-
-            # Executa na ordem: Exato -> Começa com -> Contém (o que estava causando o erro fica por último)
-            $prioritizedLnks = @($exactMatch) + @($startsWithMatch) + @($containsMatch)
-
-            foreach ($lnk in $prioritizedLnks) {
-                # ... o código interior do foreach permanece EXATAMENTE o mesmo de antes ...
+            foreach ($lnk in $lnkFiles) {
                 $target = $lnk.Target
                 $startIn = $lnk.WorkingDir
                 
@@ -1093,12 +1057,12 @@ function Get-Un1nst4ll3rDeepSize {
                             Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Shortcut.Target"
                             Write-Un1Log -Category "LOCATE" -Message "Exe & Local found via Shortcut: Exe=$target | Dir=$dir" -Color Green
                         }
-                        break # Sai no PRIMEIRO match de alta confiança que for válido no disco
+                        break
                     }
                 }
             }
         }
-        
+
         # ── PRIORIDADE 4: Shortcut Cache (DisplayIcon from Reg -> ExePath) ──
         if (!$guessedPath -and !$exeFromShortcut -and ![string]::IsNullOrWhiteSpace($prog.DisplayIcon)) {
             $cleanIcon = $prog.DisplayIcon -replace '\"', '' -replace ',\d+$', ''
@@ -1109,8 +1073,6 @@ function Get-Un1nst4ll3rDeepSize {
                     $guessedPath = $dir
                     $prog.RootSource = "Registry.DisplayIcon"
                     Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Registry.DisplayIcon"
-                    # Corrige o vírus: Se o MuiCache achou um exe errado antes, o DisplayIcon sobrescreve agora.
-                    if ($cleanIcon -match '\.exe$') { $exeFromShortcut = $cleanIcon }
                     Write-Un1Log -Category "LOCATE" -Message "Local found via DisplayIcon: $guessedPath" -Color Green
                 }
             }
@@ -1214,22 +1176,10 @@ function Get-Un1nst4ll3rDeepSize {
             $appWords = @($safeAppName -split '\s+' | Where-Object { $_ -notin $genericWords -and $_.Length -gt 1 })
             $firstKeyword = if ($appWords.Count -gt 0) { $appWords[0] } else { "" }
 
-            $firstKeyword = if ($appWords.Count -gt 0) { $appWords[0] } else { "" }
+            if ([string]::IsNullOrWhiteSpace($firstKeyword) -and ![string]::IsNullOrWhiteSpace($cacheKeyword)) { $firstKeyword = $cacheKeyword }
 
-            # NOVA SEGURANÇA: Palavras com menos de 4 letras geram muito falso positivo no Disk Scan.
-            # É melhor ter "NoLocation" do que apontar para a pasta errada.
-            if ($firstKeyword.Length -lt 4) {
-                Write-Un1Log -Category "LOCATE" -Message "Disk Heuristic skipped: Keyword '$firstKeyword' is too short (high false-positive risk)." -Color Blue
-            }
-            elseif ([string]::IsNullOrWhiteSpace($firstKeyword) -and ![string]::IsNullOrWhiteSpace($cacheKeyword)) { 
-                $firstKeyword = $cacheKeyword 
-            }
-
-            if ([string]::IsNullOrWhiteSpace($firstKeyword) -and ![string]::IsNullOrWhiteSpace($cacheKeyword)) { 
-                $firstKeyword = $cacheKeyword 
-            }
-
-            if (![string]::IsNullOrWhiteSpace($firstKeyword) -and $firstKeyword.Length -ge 4) {                foreach ($basePath in $commonPaths) {
+            if (![string]::IsNullOrWhiteSpace($firstKeyword)) {
+                foreach ($basePath in $commonPaths) {
                     if (!(Test-Path $basePath)) { continue }
                     $foundDir = Get-ChildItem -Path $basePath -Directory -ErrorAction SilentlyContinue | Where-Object { 
                         $fName = $_.Name
@@ -1814,45 +1764,7 @@ function Remove-Un1nst4ll3rTraces {
     )
 
     Initialize-Un1nst4ll3rEvidenceRecord -App $App
-    
-    # ======================================================================
-    # PRE-FLIGHT CHECK: O desinstalador foi perfeito? (Caso EA SPORTS FC 26)
-    # Se o VERIFY já derrubou o registro e o exe principal, a única coisa
-    # que podemos limpar agora são pastas heurísticas (AppData).
-    # Vamos checar se elas existem ANTES de iniciar a logística pesada.
-    # ======================================================================
-    $safeAppName = $App.Nome -replace '\(.*\)', '' -replace '\s+\d+.*', '' -replace '[^\w\s\-+]', ''
-    $appWords = @($safeAppName -split '\s+' | Where-Object { $_.Length -gt 2 })
-    $firstKeyword = if ($appWords.Count -gt 0) { $appWords[0] } else { $safeAppName }
-
-    $residualPaths = @(
-        "$env:APPDATA\$firstKeyword",
-        "$env:LOCALAPPDATA\$firstKeyword",
-        "$env:PROGRAMDATA\$firstKeyword",
-        "$env:LOCALAPPDATA\Programs\$firstKeyword"
-    )
-
-    $hasHeuristicTargets = $false
-    foreach ($rPath in $residualPaths) {
-        if (Test-Path $rPath -ErrorAction SilentlyContinue) { 
-            $hasHeuristicTargets = $true 
-            break 
-        }
-    }
-
-    # Se não há pastas residuais inferidas E não há alvos manuais explícitos restantes, aborta.
-    if (!$hasHeuristicTargets -and $App.CleanupDirectoryTargets.Count -eq 0) {
-        Write-Un1Log -Category "CLEANUP" -Message "Perfect uninstall detected. No residual folders found. Cleanup phase skipped." -Color Green
-        return 0 # Retorna 0 sem tocar em registro, atalhos ou spinner
-    }
-
-    # ======================================================================
-    # Se chegou aqui, é porque tem lixo heurístico (Caso Trae). Prossegue.
-    # ======================================================================
     Write-Un1Log -Category "CLEANUP" -Message "Starting trace cleanup for: $($App.Nome)" -Color Yellow
-    Update-Un1nst4ll3rSpinner -Message "Removendo chaves de registro órfãs..."
-    $cleanedCount = 0
-
     Update-Un1nst4ll3rSpinner -Message "Removendo chaves de registro órfãs..."
     $cleanedCount = 0
 
@@ -2032,10 +1944,6 @@ function Remove-Un1nst4ll3rTraces {
         "$env:LOCALAPPDATA\Programs\$firstKeyword"
     )
 
-    # Precisamos da lista completa de apps INSTALADOS no momento da limpeza para fazer o cruzamento
-    # (Isso deve ser passado como parâmetro para a função de limpeza, ou puxado do JSON em memória)
-    $installedAppsData = Get-Un1nst4ll3rJsonCacheData 
-
     $directoryTargets = @(
         @($App.CleanupDirectoryTargets) +
         @($App.Local) +
@@ -2043,57 +1951,13 @@ function Remove-Un1nst4ll3rTraces {
     ) | Where-Object { ![string]::IsNullOrWhiteSpace($_) } | Sort-Object { $_.Length } -Descending | Select-Object -Unique
     
     Update-Un1nst4ll3rSpinner -Message "Removendo pastas de dados residuais..."
-    
-    foreach ($path in $path) {
+    foreach ($path in $directoryTargets) {
         if (Test-Un1nst4ll3rProtectedCleanupDirectory -Path $path) {
             Write-Un1Log -Category "CLEANUP" -Message "Protected directory skipped: $path" -Color Blue
             continue
         }
 
         if (Test-Path $path) {
-            
-            # ==========================================
-            # NOVA CAMADA DE SEGURANÇA: SIBLING CHECK
-            # ==========================================
-            $isSharedDirectory = $false
-            $pathNormalized = $path.TrimEnd('\').ToLower()
-            
-            foreach ($otherApp in $installedAppsData) {
-                # Ignora o próprio app que está sendo desinstalado
-                if ($otherApp.Nome -eq $App.Nome -and $otherApp.Local -eq $App.Local) { continue }
-                
-                $otherLocal = ""
-                if (![string]::IsNullOrWhiteSpace($otherApp.Local)) {
-                    $otherLocal = $otherApp.Local.TrimEnd('\').ToLower()
-                }
-
-                # Se o Local de outro app ESTÁ DENTRO do caminho que vamos apagar...
-                # Ex: Path = 'C:\Program Files\JetBrains'
-                # Ex: OtherLocal = 'C:\Program Files\JetBrains\WebStorm'
-                if ($otherLocal -like "$pathNormalized\*") {
-                    Write-Un1Log -Category "CLEANUP" -Message "DELETE BLOCKED: Path '$path' is shared with another installed app: $($otherApp.Nome) ($otherApp.Local)" -Color Red
-                    $isSharedDirectory = $true
-                    break
-                }
-            }
-
-            if ($isSharedDirectory) {
-                continue # Pula para o próximo alvo, salva o outro app
-            }
-
-            # Segunda camada de segurança: Se a heurística do motor apontou uma pasta raiz, 
-            # mas a pasta contém MAIS DE UMA subpasta que parecem ser apps diferentes, aborta.
-            # (Opcional, mas adiciona uma camada extra de paranoia saudável)
-            $subDirs = @(Get-ChildItem -Path $path -Directory -ErrorAction SilentlyContinue)
-            if ($subDirs.Count -gt 1 -and $path -match 'Program Files|Program Files \(x86\)') {
-                 Write-Un1Log -Category "CLEANUP" -Message "DELETE BLOCKED: Path '$path' looks like a developer root folder (contains $($subDirs.Count) subdirs)." -Color Red
-                 continue
-            }
-
-            # ==========================================
-            # FIM DA SEGURANÇA
-            # ==========================================
-
             Write-Un1Log -Category "CLEANUP" -Message "Removing residual data folder: $path" -Color Cyan
             $removed = Remove-Un1nst4ll3rCleanupDirectory -Path $path
             if ($removed) {

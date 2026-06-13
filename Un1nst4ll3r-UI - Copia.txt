@@ -715,8 +715,8 @@ $dataGridView.Columns.Add("Status", $script:LangData.ColStatus) | Out-Null
 # DataGridView Columns - Specific Configurations
 # ============================================================================
 $dataGridView.Columns["TamanhoBytes"].Visible = $false
-$dataGridView.Columns["Nome"].AutoSizeMode = [System.Windows.Forms.DataGridViewAutoSizeColumnMode]::Fill
-$dataGridView.Columns["Nome"].MinimumWidth = 150
+$dataGridView.Columns["Local"].AutoSizeMode = [System.Windows.Forms.DataGridViewAutoSizeColumnMode]::Fill
+$dataGridView.Columns["Local"].MinimumWidth = 150
 
 # ============================================================================
 # Context Menu and Right-Click Selection
