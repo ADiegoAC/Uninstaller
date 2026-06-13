@@ -47,6 +47,97 @@ function Write-Un1Log {
     }
 }
 
+function Initialize-Un1nst4ll3rEvidenceRecord {
+    param (
+        [Parameter(Mandatory=$true)]
+        [PSObject]$App
+    )
+
+    $arrayProperties = @(
+        'RegistryKeyPaths',
+        'CleanupRegistryTargets',
+        'ResolvedLocalCandidates',
+        'RootPathCandidates',
+        'CleanupDirectoryTargets',
+        'ExeCandidates',
+        'IconCandidates',
+        'ShortcutTitles',
+        'ShortcutTargets',
+        'ShortcutPaths',
+        'ShortcutScopes',
+        'ShortcutIconLocations',
+        'MuiCacheMatches',
+        'UninstallCandidates',
+        'ResolvedBy'
+    )
+
+    foreach ($property in $arrayProperties) {
+        if ($App.PSObject.Properties.Name -notcontains $property -or $null -eq $App.$property) {
+            Add-Member -InputObject $App -MemberType NoteProperty -Name $property -Value ([System.Collections.ArrayList]::new()) -Force
+        } elseif ($App.$property -isnot [System.Collections.ArrayList]) {
+            $buffer = [System.Collections.ArrayList]::new()
+            foreach ($item in @($App.$property)) {
+                if ($null -ne $item) { [void]$buffer.Add($item) }
+            }
+            $App.$property = $buffer
+        }
+    }
+
+    $scalarDefaults = @{
+        RegistryKey         = ""
+        SourceRegistryPath  = ""
+        InstallLocationRaw  = ""
+        DisplayIconRaw      = ""
+        RootPath            = ""
+        RootSource          = ""
+        AppxPackageFamilyName = ""
+        AppxInstallLocation = ""
+        ShortcutPath        = ""
+        ShortcutScope       = ""
+    }
+
+    foreach ($property in $scalarDefaults.Keys) {
+        if ($App.PSObject.Properties.Name -notcontains $property -or $null -eq $App.$property) {
+            Add-Member -InputObject $App -MemberType NoteProperty -Name $property -Value $scalarDefaults[$property] -Force
+        }
+    }
+}
+
+function Add-Un1nst4ll3rEvidenceValue {
+    param (
+        [Parameter(Mandatory=$true)]
+        [PSObject]$App,
+        [Parameter(Mandatory=$true)]
+        [string]$Property,
+        $Value
+    )
+
+    Initialize-Un1nst4ll3rEvidenceRecord -App $App
+
+    if ($null -eq $Value) { return }
+
+    if ($Value -is [string]) {
+        $Value = $Value.Trim()
+        if ([string]::IsNullOrWhiteSpace($Value)) { return }
+    }
+
+    if ($App.PSObject.Properties.Name -notcontains $Property -or $null -eq $App.$Property) {
+        Add-Member -InputObject $App -MemberType NoteProperty -Name $Property -Value ([System.Collections.ArrayList]::new()) -Force
+    }
+
+    if ($App.$Property -isnot [System.Collections.ArrayList]) {
+        $buffer = [System.Collections.ArrayList]::new()
+        foreach ($item in @($App.$Property)) {
+            if ($null -ne $item) { [void]$buffer.Add($item) }
+        }
+        $App.$Property = $buffer
+    }
+
+    if ($App.$Property -notcontains $Value) {
+        [void]$App.$Property.Add($Value)
+    }
+}
+
 # ==========================================
 # BLOCO AUXILIAR: Cache de Atalhos na Memória
 # ==========================================
@@ -58,20 +149,19 @@ function Get-Un1nst4ll3rShortcutCache {
     $userShellPaths = Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders" -ErrorAction SilentlyContinue
     $machineShellPaths = Get-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders" -ErrorAction SilentlyContinue
 
-    $rawPaths = @(
-        $userShellPaths.Desktop, 
-        $userShellPaths.Programs,
-        $userShellPaths.Startup,
-        $machineShellPaths.'Common Desktop', 
-        $machineShellPaths.'Common Programs',
-        $machineShellPaths.'Common Startup'
-    )
+    $shortcutRoots = @(
+        [PSCustomObject]@{ Path = $userShellPaths.Desktop; Scope = "Desktop" },
+        [PSCustomObject]@{ Path = $userShellPaths.Programs; Scope = "StartMenu" },
+        [PSCustomObject]@{ Path = $userShellPaths.Startup; Scope = "Startup" },
+        [PSCustomObject]@{ Path = $machineShellPaths.'Common Desktop'; Scope = "CommonDesktop" },
+        [PSCustomObject]@{ Path = $machineShellPaths.'Common Programs'; Scope = "CommonStartMenu" },
+        [PSCustomObject]@{ Path = $machineShellPaths.'Common Startup'; Scope = "CommonStartup" }
+    ) | Where-Object { ![string]::IsNullOrWhiteSpace($_.Path) } |
+        ForEach-Object { [PSCustomObject]@{ Path = [System.Environment]::ExpandEnvironmentVariables($_.Path); Scope = $_.Scope } } |
+        Sort-Object Path -Unique
 
-    $validPaths = $rawPaths | Where-Object { ![string]::IsNullOrWhiteSpace($_) } | 
-                              ForEach-Object { [System.Environment]::ExpandEnvironmentVariables($_) } | 
-                              Select-Object -Unique
-
-    foreach ($path in $validPaths) {
+    foreach ($root in $shortcutRoots) {
+        $path = $root.Path
         if (Test-Path $path) {
             $lnks = Get-ChildItem -Path $path -Filter "*.lnk" -Recurse -ErrorAction SilentlyContinue
             foreach ($lnk in $lnks) {
@@ -84,6 +174,8 @@ function Get-Un1nst4ll3rShortcutCache {
                             Target       = $target
                             WorkingDir   = $shortcut.WorkingDirectory
                             IconLocation = $shortcut.IconLocation
+                            ShortcutPath = $lnk.FullName
+                            ShortcutScope = $root.Scope
                         }) | Out-Null
                     }
                 } catch {}
@@ -257,6 +349,235 @@ function Get-Un1nst4ll3rMuiCache {
 }
 
 # ==========================================
+# BLOCO AUXILIAR: Cache do Menu Iniciar (PackageFamilyName -> Friendly Name)
+# ==========================================
+function Get-Un1nst4ll3rStartAppsCache {
+    Write-Un1Log -Category "STARTAPPS" -Message "Building StartApps index..." -Color Cyan
+    $startAppsCache = @{}
+
+    try {
+        Get-StartApps -ErrorAction Stop | ForEach-Object {
+            $entryName = if ($_.Name) { $_.Name.ToString().Trim() } else { "" }
+            $appId = if ($_.AppID) { $_.AppID.ToString().Trim() } else { "" }
+
+            if ([string]::IsNullOrWhiteSpace($entryName) -or [string]::IsNullOrWhiteSpace($appId)) { return }
+            if ($appId -notmatch '^([^!]+)!.+$') { return }
+
+            $packageFamilyName = $Matches[1]
+            if (!$startAppsCache.ContainsKey($packageFamilyName)) {
+                $startAppsCache[$packageFamilyName] = $entryName
+            }
+        }
+    } catch {
+        Write-Un1Log -Category "STARTAPPS" -Message "Get-StartApps is unavailable. AppX display names will use manifest fallbacks." -Color Blue
+    }
+
+    Write-Un1Log -Category "STARTAPPS" -Message "Cache complete. $($startAppsCache.Count) AppX names mapped." -Color Green
+    return $startAppsCache
+}
+
+# ==========================================
+# BLOCO AUXILIAR: Resolve Friendly Name de Pacotes AppX
+# ==========================================
+function Resolve-Un1nst4ll3rAppxDisplayName {
+    param (
+        [Parameter(Mandatory=$true)]
+        $App,
+        [Parameter(Mandatory=$true)]
+        $Manifest
+    )
+
+    if ($null -eq $Global:StartAppsCache) {
+        $Global:StartAppsCache = Get-Un1nst4ll3rStartAppsCache
+    }
+
+    if ($Global:StartAppsCache.ContainsKey($App.PackageFamilyName)) {
+        return $Global:StartAppsCache[$App.PackageFamilyName]
+    }
+
+    $nameCandidates = [System.Collections.ArrayList]::new()
+    $appNodes = @($Manifest.Package.Applications.Application)
+
+    foreach ($appNode in $appNodes) {
+        try {
+            if ($appNode.VisualElements -and $appNode.VisualElements.DisplayName) {
+                [void]$nameCandidates.Add($appNode.VisualElements.DisplayName)
+            }
+        } catch {}
+    }
+
+    if ($Manifest.Package.Properties.DisplayName) {
+        [void]$nameCandidates.Add($Manifest.Package.Properties.DisplayName)
+    }
+
+    foreach ($candidate in $nameCandidates) {
+        $cleanCandidate = if ($candidate) { $candidate.ToString().Trim() } else { "" }
+        if (![string]::IsNullOrWhiteSpace($cleanCandidate) -and $cleanCandidate -notlike "ms-resource*") {
+            return $cleanCandidate
+        }
+    }
+
+    return $App.Name
+}
+
+# ==========================================
+# BLOCO AUXILIAR: Decide se um Pacote AppX deve ser listado
+# ==========================================
+function Test-Un1nst4ll3rVisibleAppxPackage {
+    param (
+        [Parameter(Mandatory=$true)]
+        $App,
+        [Parameter(Mandatory=$true)]
+        [string]$DisplayName
+    )
+
+    if ($null -eq $Global:StartAppsCache) {
+        $Global:StartAppsCache = Get-Un1nst4ll3rStartAppsCache
+    }
+
+    $hiddenAppxPackages = @(
+        'windows.immersivecontrolpanel',
+        'Microsoft.Windows.SecHealthUI',
+        'MicrosoftWindows.Client.CBS'
+    )
+    if ($App.Name -in $hiddenAppxPackages) {
+        return $false
+    }
+
+    # Pacotes publicados no Menu Iniciar sao tratados como apps reais do usuario.
+    if ($Global:StartAppsCache.ContainsKey($App.PackageFamilyName)) {
+        return $true
+    }
+
+    $cleanDisplayName = if ($DisplayName) { $DisplayName.Trim() } else { "" }
+    if ([string]::IsNullOrWhiteSpace($cleanDisplayName)) {
+        return $false
+    }
+
+    # Se o nome resolvido cai de volta no nome tecnico do pacote e o app nao existe no Start,
+    # ele e provavelmente um componente interno do sistema.
+    if ($cleanDisplayName -eq $App.Name) {
+        return $false
+    }
+
+    $publisherText = if ($App.Publisher) { $App.Publisher.ToString() } else { "" }
+    $isMicrosoftPackage = (
+        $publisherText -match 'CN=Microsoft' -or
+        $publisherText -match 'Microsoft Corporation' -or
+        $App.Name -like 'Microsoft.*' -or
+        $App.Name -like 'windows.*'
+    )
+
+    # Apps Microsoft sem entrada de Start costumam ser hosts/componentes do sistema.
+    if ($isMicrosoftPackage) {
+        return $false
+    }
+
+    return $true
+}
+
+# ==========================================
+# BLOCO AUXILIAR: Resolve Caminho Real do Asset AppX
+# ==========================================
+function Find-Un1nst4ll3rAppxAssetPath {
+    param (
+        [string]$InstallLocation,
+        [string]$RelativePath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($InstallLocation) -or [string]::IsNullOrWhiteSpace($RelativePath)) { return "" }
+    if (!(Test-Path $InstallLocation -PathType Container -ErrorAction SilentlyContinue)) { return "" }
+
+    $normalizedRelativePath = $RelativePath.Trim() -replace '/', '\'
+    $baseAssetPath = Join-Path $InstallLocation $normalizedRelativePath
+    if (Test-Path $baseAssetPath -PathType Leaf -ErrorAction SilentlyContinue) { return $baseAssetPath }
+
+    $assetDirectory = Split-Path $baseAssetPath -Parent
+    if (!(Test-Path $assetDirectory -PathType Container -ErrorAction SilentlyContinue)) { return "" }
+
+    $assetName = [System.IO.Path]::GetFileNameWithoutExtension($baseAssetPath)
+    $assetExtension = [System.IO.Path]::GetExtension($baseAssetPath)
+    if ([string]::IsNullOrWhiteSpace($assetName) -or [string]::IsNullOrWhiteSpace($assetExtension)) { return "" }
+
+    $candidates = @(Get-ChildItem -Path $assetDirectory -Filter "$assetName*$assetExtension" -File -ErrorAction SilentlyContinue)
+    if ($candidates.Count -eq 0) { return "" }
+
+    $bestAsset = $candidates |
+        Sort-Object `
+            @{ Expression = {
+                $score = 500
+                if ($_.Name -match 'targetsize-48') { $score = 0 }
+                elseif ($_.Name -match 'targetsize-44') { $score = 5 }
+                elseif ($_.Name -match 'targetsize-40') { $score = 10 }
+                elseif ($_.Name -match 'targetsize-32') { $score = 15 }
+                elseif ($_.Name -match 'targetsize-64') { $score = 20 }
+                elseif ($_.Name -match 'scale-200') { $score = 25 }
+                elseif ($_.Name -match 'scale-150') { $score = 30 }
+                elseif ($_.Name -match 'scale-100') { $score = 35 }
+                elseif ($_.Name -ieq [System.IO.Path]::GetFileName($baseAssetPath)) { $score = 40 }
+                if ($_.Name -match 'altform-unplated') { $score += 100 }
+                elseif ($_.Name -match 'lightunplated') { $score += 110 }
+                elseif ($_.Name -match 'theme-') { $score += 120 }
+                $score
+            } },
+            @{ Expression = { $_.Name.Length } } |
+        Select-Object -First 1
+
+    if ($bestAsset) { return $bestAsset.FullName }
+    return ""
+}
+
+# ==========================================
+# BLOCO AUXILIAR: Resolve Icone de Pacotes AppX
+# ==========================================
+function Resolve-Un1nst4ll3rAppxLogoPath {
+    param (
+        [Parameter(Mandatory=$true)]
+        $App,
+        [Parameter(Mandatory=$true)]
+        $Manifest
+    )
+
+    if ([string]::IsNullOrWhiteSpace($App.InstallLocation)) { return "" }
+
+    $logoCandidates = [System.Collections.ArrayList]::new()
+    $appNodes = @($Manifest.Package.Applications.Application)
+
+    foreach ($appNode in $appNodes) {
+        try {
+            $visual = $appNode.VisualElements
+            if ($visual) {
+                foreach ($candidate in @(
+                    $visual.Square44x44Logo,
+                    $visual.SmallLogo,
+                    $visual.Logo,
+                    $visual.Square150x150Logo,
+                    $visual.DefaultTile.Square71x71Logo,
+                    $visual.DefaultTile.Square150x150Logo
+                )) {
+                    if (![string]::IsNullOrWhiteSpace($candidate)) {
+                        [void]$logoCandidates.Add($candidate)
+                    }
+                }
+            }
+        } catch {}
+    }
+
+    if ($Manifest.Package.Properties.Logo) {
+        [void]$logoCandidates.Add($Manifest.Package.Properties.Logo)
+    }
+
+    foreach ($logoCandidate in ($logoCandidates | Select-Object -Unique)) {
+        $resolvedAsset = Find-Un1nst4ll3rAppxAssetPath -InstallLocation $App.InstallLocation -RelativePath $logoCandidate
+        if (![string]::IsNullOrWhiteSpace($resolvedAsset)) {
+            return $resolvedAsset
+        }
+    }
+
+    return ""
+}
+
+# ==========================================
 # BLOCO AUXILIAR: Descoberta de Apps sem Registro (Orphans via MuiCache)
 # ==========================================
 function Find-Un1nst4ll3rOrphans {
@@ -392,7 +713,7 @@ function Find-Un1nst4ll3rOrphans {
 
         Write-Un1Log -Category "ORPHAN" -Message "Unregistered app mapped: $muiName (Dir: $installDir)" -Color Green
         
-        $orphans.Add([PSCustomObject]@{
+        $orphanRecord = [PSCustomObject]@{
             Nome                 = $muiName
             Versao               = ""
             Fabricante           = ""
@@ -416,7 +737,20 @@ function Find-Un1nst4ll3rOrphans {
             ExePath              = $exePath 
             ShortcutTitle        = "" 
             ShortcutTarget       = "" 
-        }) | Out-Null
+        }
+
+        Initialize-Un1nst4ll3rEvidenceRecord -App $orphanRecord
+        $orphanRecord.RootPath = $installDir
+        $orphanRecord.RootSource = "OrphanDiscovery"
+        Add-Un1nst4ll3rEvidenceValue -App $orphanRecord -Property "ResolvedLocalCandidates" -Value $installDir
+        Add-Un1nst4ll3rEvidenceValue -App $orphanRecord -Property "RootPathCandidates" -Value $installDir
+        Add-Un1nst4ll3rEvidenceValue -App $orphanRecord -Property "CleanupDirectoryTargets" -Value $installDir
+        Add-Un1nst4ll3rEvidenceValue -App $orphanRecord -Property "ExeCandidates" -Value $exePath
+        Add-Un1nst4ll3rEvidenceValue -App $orphanRecord -Property "UninstallCandidates" -Value $uninstallString
+        Add-Un1nst4ll3rEvidenceValue -App $orphanRecord -Property "MuiCacheMatches" -Value $muiName
+        Add-Un1nst4ll3rEvidenceValue -App $orphanRecord -Property "ResolvedBy" -Value "OrphanDiscovery"
+
+        $orphans.Add($orphanRecord) | Out-Null
     }
     
     Write-Un1Log -Category "ORPHAN" -Message "Orphan discovery complete. $($orphans.Count) unregistered apps found." -Color Magenta
@@ -457,12 +791,14 @@ function Get-Un1nst4ll3rScan {
                         if (Test-Path $iconPath -ErrorAction SilentlyContinue) { try { $publisher = ([System.Diagnostics.FileVersionInfo]::GetVersionInfo($iconPath)).CompanyName } catch {} }
                     }
 
-                    $installedPrograms.Add([PSCustomObject]@{
+                    $displayIconValue = if ($item.DisplayIcon) { ($item.DisplayIcon -replace '\"', '' -replace ',\d+$', '').Trim() } else { "" }
+                    $installLocationValue = if ($installDir) { $installDir.TrimEnd('\') } else { "" }
+                    $registryRecord = [PSCustomObject]@{
                         Nome                 = $item.DisplayName
                         Versao               = $item.DisplayVersion
                         Fabricante           = if ($publisher) { $publisher } else { "N/A" }
                         Tamanho              = $sizeBytes
-                        Local                = if ($installDir) { $installDir.TrimEnd('\') } else { "" }
+                        Local                = $installLocationValue
                         Chave                = $item.PSChildName
                         Tipo                 = "Win32"
                         Status               = $status
@@ -477,31 +813,55 @@ function Get-Un1nst4ll3rScan {
                         NoRepair             = [bool]$item.NoRepair
                         ModifyPath           = if ($item.ModifyPath) { ($item.ModifyPath -replace '\"', '' -replace ',\d+$', '').Trim() } else { "" }
                         IsMsi                = [bool]($item.WindowsInstaller -eq 1)
-                        DisplayIcon          = if ($item.DisplayIcon) { ($item.DisplayIcon -replace '\"', '' -replace ',\d+$', '').Trim() } else { "" }
+                        DisplayIcon          = $displayIconValue
                         ExePath              = ""
                         ShortcutTitle        = "" 
                         ShortcutTarget       = "" 
-                    }) | Out-Null
+                    }
+
+                    Initialize-Un1nst4ll3rEvidenceRecord -App $registryRecord
+                    $registryRecord.RegistryKey = $item.PSChildName
+                    $registryRecord.SourceRegistryPath = if ($item.PSPath) { $item.PSPath } else { "" }
+                    $registryRecord.InstallLocationRaw = if ($item.InstallLocation) { $item.InstallLocation.ToString().Trim() } else { "" }
+                    $registryRecord.DisplayIconRaw = if ($item.DisplayIcon) { $item.DisplayIcon.ToString().Trim() } else { "" }
+                    $registryRecord.RootPath = $installLocationValue
+                    $registryRecord.RootSource = if ($installLocationValue) { "Registry.InstallLocation" } else { "" }
+                    Add-Un1nst4ll3rEvidenceValue -App $registryRecord -Property "RegistryKeyPaths" -Value $item.PSPath
+                    Add-Un1nst4ll3rEvidenceValue -App $registryRecord -Property "CleanupRegistryTargets" -Value $item.PSPath
+                    Add-Un1nst4ll3rEvidenceValue -App $registryRecord -Property "ResolvedLocalCandidates" -Value $installLocationValue
+                    Add-Un1nst4ll3rEvidenceValue -App $registryRecord -Property "RootPathCandidates" -Value $installLocationValue
+                    Add-Un1nst4ll3rEvidenceValue -App $registryRecord -Property "CleanupDirectoryTargets" -Value $installLocationValue
+                    Add-Un1nst4ll3rEvidenceValue -App $registryRecord -Property "IconCandidates" -Value $displayIconValue
+                    Add-Un1nst4ll3rEvidenceValue -App $registryRecord -Property "UninstallCandidates" -Value $registryRecord.UninstallString
+                    Add-Un1nst4ll3rEvidenceValue -App $registryRecord -Property "ResolvedBy" -Value "Registry.Uninstall"
+
+                    $installedPrograms.Add($registryRecord) | Out-Null
                 }
             }
         }
     }
     #--- Desboberta de Apps Modernos (AppX) ---
+    if ($null -eq $Global:StartAppsCache) { $Global:StartAppsCache = Get-Un1nst4ll3rStartAppsCache }
     $appxPackages = Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { $_.IsFramework -eq $false -and $_.SignatureKind -ne "None" }
     foreach ($app in $appxPackages) {
         if ($app.Name -match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}') { continue }
         try {
             $manifest = $app | Get-AppxPackageManifest -ErrorAction Stop
-            $isHidden = (-not $manifest.Package.Applications.Application.AppListEntry -or $manifest.Package.Applications.Application.AppListEntry -eq "none")
-            if ($isHidden -and $app.Publisher -match "Microsoft") { continue }
-            if ($app.Publisher -match "Microsoft Windows") { continue }
+            #$isHidden = (-not $manifest.Package.Applications.Application.AppListEntry -or $manifest.Package.Applications.Application.AppListEntry -eq "none")
+            #if ($isHidden -and $app.Publisher -match "Microsoft") { continue }
+            #if ($app.Publisher -match "Microsoft Windows") { continue }
 
             Write-Un1Log -Category "SCAN" -Message "AppX found: $($app.Name)" -Color Orange
             
-            $displayName = $app.Name; $xmlDN = $manifest.Package.Properties.DisplayName; if ($xmlDN -and $xmlDN -notlike "ms-resource*") { $displayName = $xmlDN }
+            $displayName = Resolve-Un1nst4ll3rAppxDisplayName -App $app -Manifest $manifest
+            if (!(Test-Un1nst4ll3rVisibleAppxPackage -App $app -DisplayName $displayName)) {
+                Write-Un1Log -Category "SCAN" -Message "AppX skipped (hidden/system component): $($app.Name)" -Color Blue
+                continue
+            }
+            $displayIcon = Resolve-Un1nst4ll3rAppxLogoPath -App $app -Manifest $manifest
             $cleanPublisher = $app.Publisher; $xmlP = $manifest.Package.Properties.PublisherDisplayName; if ($xmlP -and $xmlP -notlike "ms-resource*") { $cleanPublisher = $xmlP } elseif ($cleanPublisher -match 'CN=([^,]+)') { $cleanPublisher = $matches[1] } elseif ($cleanPublisher -match '^[0-9a-fA-F]{8}-') { $cleanPublisher = "N/A" }
 
-            $installedPrograms.Add([PSCustomObject]@{
+            $appxRecord = [PSCustomObject]@{
                 Nome                 = $displayName
                 Versao               = $app.Version
                 Fabricante           = $cleanPublisher
@@ -517,13 +877,28 @@ function Get-Un1nst4ll3rScan {
                 ExePath              = ""
                 ModifyPath           = ""
                 IsMsi                = $false
-                DisplayIcon          = ""
+                DisplayIcon          = $displayIcon
                 NoRemove             = $false
                 NoModify             = $true
                 NoRepair             = $true
                 ShortcutTitle        = ""
                 ShortcutTarget       = ""
-            }) | Out-Null
+            }
+
+            Initialize-Un1nst4ll3rEvidenceRecord -App $appxRecord
+            $appxRecord.AppxPackageFamilyName = $app.PackageFamilyName
+            $appxRecord.AppxInstallLocation = if ($app.InstallLocation) { $app.InstallLocation.TrimEnd('\') } else { "" }
+            $appxRecord.InstallLocationRaw = if ($app.InstallLocation) { $app.InstallLocation.ToString().Trim() } else { "" }
+            $appxRecord.DisplayIconRaw = $displayIcon
+            $appxRecord.RootPath = $appxRecord.Local
+            $appxRecord.RootSource = if ($appxRecord.Local) { "Appx.InstallLocation" } else { "" }
+            Add-Un1nst4ll3rEvidenceValue -App $appxRecord -Property "ResolvedLocalCandidates" -Value $appxRecord.Local
+            Add-Un1nst4ll3rEvidenceValue -App $appxRecord -Property "RootPathCandidates" -Value $appxRecord.Local
+            Add-Un1nst4ll3rEvidenceValue -App $appxRecord -Property "CleanupDirectoryTargets" -Value $appxRecord.Local
+            Add-Un1nst4ll3rEvidenceValue -App $appxRecord -Property "IconCandidates" -Value $displayIcon
+            Add-Un1nst4ll3rEvidenceValue -App $appxRecord -Property "ResolvedBy" -Value "Appx.Manifest"
+
+            $installedPrograms.Add($appxRecord) | Out-Null
         } catch {}
     }
     
@@ -565,6 +940,17 @@ function Get-Un1nst4ll3rDeepSize {
 
     foreach ($prog in $ProgramList) {
         Write-Un1Log -Category "LOCATE" -Message "Processing: $($prog.Nome) ---" -Color Cyan
+        Initialize-Un1nst4ll3rEvidenceRecord -App $prog
+        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedLocalCandidates" -Value $prog.Local
+        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "RootPathCandidates" -Value $prog.Local
+        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "CleanupDirectoryTargets" -Value $prog.Local
+        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $prog.ExePath
+        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "IconCandidates" -Value $prog.DisplayIcon
+        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "UninstallCandidates" -Value $prog.UninstallString
+        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutTitles" -Value $prog.ShortcutTitle
+        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutTargets" -Value $prog.ShortcutTarget
+        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutPaths" -Value $(if ($prog.PSObject.Properties.Name -contains 'ShortcutPath') { $prog.ShortcutPath } else { "" })
+        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutScopes" -Value $(if ($prog.PSObject.Properties.Name -contains 'ShortcutScope') { $prog.ShortcutScope } else { "" })
 
         # ── PRIORIDADE 1: Json Pacotes Microsoft ──
         if ([string]::IsNullOrWhiteSpace($prog.Local)) {
@@ -602,6 +988,8 @@ function Get-Un1nst4ll3rDeepSize {
             } else {
                 $muiExe = $muiEntry # Fallback de compatibilidade se for string
             }
+            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "MuiCacheMatches" -Value $(if ($matchKey) { $matchKey } else { $prog.Nome })
+            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $muiExe
 
             # Validação Crucial: Rejeita instaladores, desinstaladores e pastas temporárias
             $isValidMuiExe = $true
@@ -625,6 +1013,8 @@ function Get-Un1nst4ll3rDeepSize {
                 $dir = Split-Path $muiExe
                 if ($dir -and (Test-Path $dir)) { 
                     $guessedPath = $dir
+                    $prog.RootSource = "MuiCache"
+                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "MuiCache"
                     Write-Un1Log -Category "LOCATE" -Message "GOT via MuiCache! Exe=$muiExe | Dir=$dir (Skipped Disk Scan & Exe Heuristic)" -Color Green
                 }
             } elseif ($muiExe -and !$isValidMuiExe) {
@@ -651,10 +1041,20 @@ function Get-Un1nst4ll3rDeepSize {
                         $exeFromShortcut = $target
                         $prog.ShortcutTitle = $lnk.LnkName
                         $prog.ShortcutTarget = $target
+                        $prog.ShortcutPath = $lnk.ShortcutPath
+                        $prog.ShortcutScope = $lnk.ShortcutScope
+                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutTitles" -Value $lnk.LnkName
+                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutTargets" -Value $target
+                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutPaths" -Value $lnk.ShortcutPath
+                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutScopes" -Value $lnk.ShortcutScope
+                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutIconLocations" -Value $lnk.IconLocation
+                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $target
                         
                         $dir = if (![string]::IsNullOrWhiteSpace($startIn) -and (Test-Path $startIn)) { $startIn } else { Split-Path $target }
                         if ($dir -and (Test-Path $dir)) { 
                             $guessedPath = $dir
+                            $prog.RootSource = "Shortcut.Target"
+                            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Shortcut.Target"
                             Write-Un1Log -Category "LOCATE" -Message "Exe & Local found via Shortcut: Exe=$target | Dir=$dir" -Color Green
                         }
                         break
@@ -666,10 +1066,13 @@ function Get-Un1nst4ll3rDeepSize {
         # ── PRIORIDADE 4: Shortcut Cache (DisplayIcon from Reg -> ExePath) ──
         if (!$guessedPath -and !$exeFromShortcut -and ![string]::IsNullOrWhiteSpace($prog.DisplayIcon)) {
             $cleanIcon = $prog.DisplayIcon -replace '\"', '' -replace ',\d+$', ''
+            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "IconCandidates" -Value $cleanIcon
             if ((Test-Path $cleanIcon -ErrorAction SilentlyContinue) -and $cleanIcon -notmatch 'Package Cache|Windows\\Installer|shell32|imageres|Windows\\SysWOW64|Windows\\System32') {
                 $dir = Split-Path -Path $cleanIcon -ErrorAction SilentlyContinue
                 if ($dir -and (Test-Path $dir -ErrorAction SilentlyContinue)) {
                     $guessedPath = $dir
+                    $prog.RootSource = "Registry.DisplayIcon"
+                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Registry.DisplayIcon"
                     Write-Un1Log -Category "LOCATE" -Message "Local found via DisplayIcon: $guessedPath" -Color Green
                 }
             }
@@ -677,6 +1080,8 @@ function Get-Un1nst4ll3rDeepSize {
 
         if (!$guessedPath -and ![string]::IsNullOrWhiteSpace($prog.Local) -and (Test-Path $prog.Local)) {
             $guessedPath = $prog.Local
+            if ([string]::IsNullOrWhiteSpace($prog.RootSource)) { $prog.RootSource = "Registry.InstallLocation" }
+            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Registry.InstallLocation"
             Write-Un1Log -Category "LOCATE" -Message "Local already provided by Registry: $guessedPath" -Color Green
         }
 
@@ -694,7 +1099,11 @@ function Get-Un1nst4ll3rDeepSize {
                         $msiSource = $installer.ProductInfo("{$msiGuid}", "InstallSource")
                         if (![string]::IsNullOrWhiteSpace($msiSource) -and (Test-Path $msiSource) -and $msiSource -notmatch 'Package Cache|Windows\\TEMP|IXP|[0-9a-f]{8,}') { $guessedPath = $msiSource.TrimEnd('\') }
                     }
-                    if ($guessedPath) { Write-Un1Log -Category "LOCATE" -Message "Local found via MSI COM: $guessedPath" -Color Green }
+                    if ($guessedPath) {
+                        $prog.RootSource = "MSI.ProductInfo"
+                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "MSI.ProductInfo"
+                        Write-Un1Log -Category "LOCATE" -Message "Local found via MSI COM: $guessedPath" -Color Green
+                    }
                 } catch {}
             }
             if (!$guessedPath -and $prog.UninstallString -notmatch "msiexec") {
@@ -703,6 +1112,9 @@ function Get-Un1nst4ll3rDeepSize {
                 if (!$dir) { $cleanStr = $prog.UninstallString.Trim('"').Trim("'"); $exePath = ($cleanStr -split ' /')[0].Trim(); $dir = Split-Path -Path $exePath -ErrorAction SilentlyContinue }
                 if ($dir -and (Test-Path $dir -ErrorAction SilentlyContinue) -and $dir -notmatch 'Package Cache|Windows\\Installer') { 
                     $guessedPath = $dir 
+                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $exePath
+                    $prog.RootSource = "UninstallString"
+                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "UninstallString"
                     Write-Un1Log -Category "LOCATE" -Message "Local found via UninstallString: $guessedPath" -Color Green
                 }
             }
@@ -733,6 +1145,10 @@ function Get-Un1nst4ll3rDeepSize {
                                         $dir = Split-Path $exePathExpanded
                                         if ($dir -and (Test-Path $dir)) {
                                             $guessedPath = $dir
+                                            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "RegistryKeyPaths" -Value $exeKey
+                                            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $exePathExpanded
+                                            $prog.RootSource = "Registry.AppPaths"
+                                            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Registry.AppPaths"
                                             Write-Un1Log -Category "LOCATE" -Message "Location found via App Paths Registry: $guessedPath (Keyword: $kw)" -Color Green
                                             break
                                         }
@@ -786,6 +1202,8 @@ function Get-Un1nst4ll3rDeepSize {
                             continue
                         }
                         $guessedPath = $foundDir.FullName
+                        $prog.RootSource = "Disk.Heuristic"
+                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Disk.Heuristic"
                         Write-Un1Log -Category "LOCATE" -Message "Local found via Disk Heuristic: $guessedPath (Keyword: $firstKeyword)" -Color Green
                         break 
                     }
@@ -806,13 +1224,19 @@ function Get-Un1nst4ll3rDeepSize {
 
         if ($guessedPath) { 
             $prog.Local = $guessedPath
+            $prog.RootPath = $guessedPath
+            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedLocalCandidates" -Value $guessedPath
+            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "RootPathCandidates" -Value $guessedPath
+            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "CleanupDirectoryTargets" -Value $guessedPath
             if ($prog.Status -eq "NoLocation") { $prog.Status = "OK" } 
             
             if (![string]::IsNullOrWhiteSpace($exeFromShortcut)) {
                 $prog.ExePath = $exeFromShortcut
+                Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $exeFromShortcut
                 Write-Un1Log -Category "LOCATE" -Message "ExePath confirmed via Shortcut/MuiCache: $exeFromShortcut" -Color Green
             } elseif (![string]::IsNullOrWhiteSpace($prog.ExePath)) {
                 # Já temos um ExePath (provavelmente do Orphan Finder), mantemos ele
+                Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $prog.ExePath
                 Write-Un1Log -Category "LOCATE" -Message "ExePath already resolved (pre-filled): $($prog.ExePath)" -Color DarkGray
             } else {
                 # Roda a heurística pesada só se não tiver NADA
@@ -820,6 +1244,10 @@ function Get-Un1nst4ll3rDeepSize {
                 $foundExe = Find-Un1nst4ll3rMainExe -Path $guessedPath -AppName $prog.Nome -UninstallExeName $uninstallExeName
                 # ... resto do código do running process ...
                 $prog.ExePath = $foundExe
+                Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $foundExe
+                if (![string]::IsNullOrWhiteSpace($foundExe)) {
+                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Exe.Heuristic"
+                }
             }
         } else {
             $prog.Status = "NoLocation"
@@ -847,6 +1275,7 @@ function Resolve-Un1nst4ll3rMicrosoftPackage {
         try {
             if ($Prog.Nome -match $rule.Pattern) {
                 Write-Un1Log -Category "MS-PKG" -Message "System package detected: $($Prog.Nome). Checking JSON rule..." -Color Magenta
+                Initialize-Un1nst4ll3rEvidenceRecord -App $Prog
                 
                 $expandedPath = [System.Environment]::ExpandEnvironmentVariables($rule.CheckPath)
                 
@@ -860,9 +1289,15 @@ function Resolve-Un1nst4ll3rMicrosoftPackage {
                 if ($pathExists) {
                     $resolvedPath = if (![string]::IsNullOrWhiteSpace($rule.LocalPath)) { $rule.LocalPath } else { if ($expandedCheckPath -match '^(.*\\)([^\\]+\.\w{3})$') { $Matches[1] } else { $expandedCheckPath } }
                     $Prog.Local = [System.Environment]::ExpandEnvironmentVariables($resolvedPath).TrimEnd('\')
+                    $Prog.RootPath = $Prog.Local
+                    $Prog.RootSource = "SysPkgBank"
                     $Prog.Tamanho = 0
                     $Prog.Status = if ($rule.IsSystem -eq $true) { "System" } else { "OK" }
                     $Prog.ExePath = ""
+                    Add-Un1nst4ll3rEvidenceValue -App $Prog -Property "ResolvedLocalCandidates" -Value $Prog.Local
+                    Add-Un1nst4ll3rEvidenceValue -App $Prog -Property "RootPathCandidates" -Value $Prog.Local
+                    Add-Un1nst4ll3rEvidenceValue -App $Prog -Property "CleanupDirectoryTargets" -Value $Prog.Local
+                    Add-Un1nst4ll3rEvidenceValue -App $Prog -Property "ResolvedBy" -Value "SysPkgBank"
                     
                     Write-Un1Log -Category "MS-PKG" -Message "Location confirmed via JSON: $($Prog.Local)" -Color Cyan
                     return $true
@@ -975,22 +1410,227 @@ function Get-Un1nst4ll3rSizeEngine {
     return $updatedList
 }
 
+# ==========================================
+# UI: Motor do Spinner Global
+# ==========================================
+ $script:SpinnerSync = $null
+ $script:SpinnerPS = $null
+ $script:SpinnerRunspace = $null
+
+function Start-Un1nst4ll3rSpinner {
+    param([string]$InitialMessage = "Iniciando...", [System.Drawing.Point]$Location)
+
+    Stop-Un1nst4ll3rSpinner # Garante que nenhum outro esteja rodando
+
+    $script:SpinnerSync = [hashtable]::Synchronized(@{})
+    $script:SpinnerSync.Stop = $false
+    $script:SpinnerSync.Message = $InitialMessage
+    $script:SpinnerSync.PosX = $Location.X
+    $script:SpinnerSync.PosY = $Location.Y
+    $script:SpinnerSync.AppRoot = $AppRoot 
+
+    $script:SpinnerRunspace = [runspacefactory]::CreateRunspace()
+    $script:SpinnerRunspace.ApartmentState = "STA"
+    $script:SpinnerRunspace.ThreadOptions = "ReuseThread"
+    $script:SpinnerRunspace.Open()
+    $script:SpinnerRunspace.SessionStateProxy.SetVariable("sync", $script:SpinnerSync)
+
+    $script:SpinnerPS = [powershell]::Create()
+    $script:SpinnerPS.Runspace = $script:SpinnerRunspace
+
+    $script:SpinnerPS.AddScript({
+        Add-Type -AssemblyName System.Windows.Forms
+        Add-Type -Assembly.Drawing
+
+        $form = New-Object System.Windows.Forms.Form
+        $form.Text = "Un1nst4ll3r"
+        $form.Size = New-Object System.Drawing.Size(380, 100)
+        $form.StartPosition = "Manual"
+        $form.Location = New-Object System.Drawing.Point($sync.PosX, $sync.PosY)
+        $form.FormBorderStyle = "FixedSingle"
+        $form.ControlBox = $false
+        $form.TopMost = $true
+        $form.BackColor = [System.Drawing.Color]::White
+
+        # ====================================================
+        # CONFIGURAÇÃO DE TAMANHO INDEPENDENTE DA IMAGEM
+        # ====================================================
+        $ImageWidth = 45   # <- Defina aqui a largura exata da imagem
+        $ImageHeight = 45  # <- Defina aqui a altura exata da imagem
+        
+        # A coluna do painel será um pouco maior que a imagem para criar uma "margem" visual
+        $ColumnWidth = $ImageWidth + 10 # 48 + 20 = 68px de largura de coluna
+        # ====================================================
+
+        $panel = New-Object System.Windows.Forms.TableLayoutPanel
+        $panel.Dock = "Fill"
+        $panel.ColumnCount = 2
+        $panel.RowCount = 1
+        $panel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Absolute, $ColumnWidth))) | Out-Null
+        $panel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+
+        $imgPath = Join-Path $sync.AppRoot "busy.gif" 
+        $picBox = $null
+        if (Test-Path $imgPath -ErrorAction SilentlyContinue) {
+            $picBox = New-Object System.Windows.Forms.PictureBox
+            
+            # Define o tamanho exato do PictureBox, independente do painel
+            $picBox.Width = $ImageWidth
+            $picBox.Height = $ImageHeight
+            
+            # Zoom para preencher o tamanho exato definido acima (sem distorcer se a imagem não for quadrada)
+            $picBox.SizeMode = "StretchImage" 
+            
+            # Ancoragem: Amarra nos 4 lados. Como o PictureBox é menor que a célula do painel, 
+            # isso fará com que ele fique perfeitamente centralizado dentro do espaço da coluna
+            $picBox.Anchor = "Left"
+            
+            $picBox.Image = [System.Drawing.Image]::FromFile($imgPath)
+            $panel.Controls.Add($picBox, 0, 0) | Out-Null
+        } else {
+            $lblFallback = New-Object System.Windows.Forms.Label
+            $lblFallback.Text = "⏳"
+            $lblFallback.Dock = "Fill"
+            $lblFallback.TextAlign = "MiddleCenter"
+            $lblFallback.Font = New-Object System.Drawing.Font("Segoe UI", 18)
+            $panel.Controls.Add($lblFallback, 0, 0) | Out-Null
+        }
+
+        $lbl = New-Object System.Windows.Forms.Label
+        $lbl.Dock = "Fill"
+        $lbl.TextAlign = "MiddleLeft"
+        $lbl.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Regular)
+        $lbl.Margin = New-Object System.Windows.Forms.Padding(5, 0, 5, 0)
+        $lbl.Text = $sync.Message
+        $panel.Controls.Add($lbl, 1, 0) | Out-Null
+
+        $form.Controls.Add($panel)
+
+        $timer = New-Object System.Windows.Forms.Timer
+        $timer.Interval = 100
+        $timer.Add_Tick({
+            if ($sync.Stop) {
+                $timer.Stop()
+                $form.Close()
+            } else {
+                $lbl.Text = $sync.Message
+            }
+        })
+        $timer.Start()
+
+        [void]$form.ShowDialog()
+        
+        if ($null -ne $picBox -and $null -ne $picBox.Image) {
+            $picBox.Image.Dispose()
+        }
+        $timer.Dispose()
+        $form.Dispose()
+    }) | Out-Null
+
+    $script:SpinnerPS.BeginInvoke() | Out-Null
+}
+
+function Update-Un1nst4ll3rSpinner {
+    param([string]$Message)
+    if ($null -ne $script:SpinnerSync) {
+        $script:SpinnerSync.Message = $Message
+    }
+}
+
+function Stop-Un1nst4ll3rSpinner {
+    if ($null -ne $script:SpinnerSync) {
+        $script:SpinnerSync.Stop = $true
+        Start-Sleep -Milliseconds 200 # Dá tempo da UI fechar
+    }
+    if ($null -ne $script:SpinnerRunspace) {
+        $script:SpinnerRunspace.Close()
+    }
+    if ($null -ne $script:SpinnerPS) {
+        $script:SpinnerPS.Dispose()
+    }
+    $script:SpinnerSync = $null
+    $script:SpinnerPS = $null
+    $script:SpinnerRunspace = $null
+}
 
 # ==========================================
 # BLOCO 5: Motor de Desinstalação
 # ==========================================
+function Test-Un1nst4ll3rUninstallCompleted {
+    param (
+        [PSCustomObject]$App
+    )
+
+    Initialize-Un1nst4ll3rEvidenceRecord -App $App
+    Write-Un1Log -Category "VERIFY" -Message "Verifying uninstall completion for: $($App.Nome)" -Color Yellow
+
+    if ($App.Tipo -eq "AppX") {
+        $appxMatch = Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object {
+            (![string]::IsNullOrWhiteSpace($App.Chave) -and $_.PackageFullName -eq $App.Chave) -or
+            (![string]::IsNullOrWhiteSpace($App.AppxPackageFamilyName) -and $_.PackageFamilyName -eq $App.AppxPackageFamilyName) -or
+            (![string]::IsNullOrWhiteSpace($App.Nome) -and $_.Name -eq $App.Nome)
+        } | Select-Object -First 1
+
+        if ($appxMatch) {
+            Write-Un1Log -Category "VERIFY" -Message "AppX package is still present: $($appxMatch.PackageFullName)" -Color Red
+            return $false
+        }
+
+        Write-Un1Log -Category "VERIFY" -Message "AppX package is no longer present." -Color Green
+        return $true
+    }
+
+    $registryTargets = @(
+        @($App.CleanupRegistryTargets) +
+        @(
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$($App.Chave)",
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\$($App.Chave)",
+            "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$($App.Chave)"
+        )
+    ) | Where-Object { ![string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique
+
+    foreach ($regPath in $registryTargets) {
+        if (Test-Path $regPath -ErrorAction SilentlyContinue) {
+            Write-Un1Log -Category "VERIFY" -Message "Registry evidence still present: $regPath" -Color Red
+            return $false
+        }
+    }
+
+    $exeCandidates = @(
+        @($App.ExeCandidates) +
+        @($App.ExePath) +
+        @($App.ShortcutTargets)
+    ) | Where-Object { ![string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique
+
+    foreach ($exePath in $exeCandidates) {
+        if ((Test-Path $exePath -ErrorAction SilentlyContinue) -and $exePath -notmatch 'uninstall|unins\d+|setup') {
+            Write-Un1Log -Category "VERIFY" -Message "Executable evidence still present: $exePath" -Color Red
+            return $false
+        }
+    }
+
+    if ($exeCandidates.Count -eq 0 -and ![string]::IsNullOrWhiteSpace($App.Local) -and (Test-Path $App.Local -ErrorAction SilentlyContinue)) {
+        $remainingExe = Find-Un1nst4ll3rMainExe -Path $App.Local -AppName $App.Nome
+        if (![string]::IsNullOrWhiteSpace($remainingExe) -and (Test-Path $remainingExe -ErrorAction SilentlyContinue)) {
+            Write-Un1Log -Category "VERIFY" -Message "Main executable heuristic still found: $remainingExe" -Color Red
+            return $false
+        }
+    }
+
+    Write-Un1Log -Category "VERIFY" -Message "No installation evidence remains for $($App.Nome)." -Color Green
+    return $true
+}
+
 function Start-Un1nst4ll3rApp {
     param (
         [string]$AppName,
         [string]$UninstallStringValue,
-        [string]$QuietUninstallStringValue, # Ajustado para Quiet (correção de digitação)
+        [string]$QuietUninstallStringValue,
         [string]$ProgramType,
-        [string]$AppIdentifier = "" # Usado para AppX (PackageFullName) e futuras limpezas de registro
+        [string]$AppIdentifier = "" 
     )
 
     $L = $script:LangData
-    
-    # Usa o formato dinâmico do JSON, substituindo o {0} pelo nome do App
     $confirmMsg = $L.ConfirmUninstallMessage -f $AppName
 
     $resultFromUser = [System.Windows.Forms.MessageBox]::Show(
@@ -1005,12 +1645,11 @@ function Start-Un1nst4ll3rApp {
     }    
 
     Write-Un1Log -Category "UNINSTALL" -Message "Attempting to uninstall: $($AppName)" -Color Yellow
+    Update-Un1nst4ll3rSpinner -Message "Executando desinstalador de $($AppName)..."
 
-    # Variáveis de controle
     $uninstallCmd = $UninstallStringValue
     $Silent = $false
 
-    # 1. Verifica o modo Quiet
     if ($QuietUninstallStringValue -ne "") {
         $uninstallCmd = $QuietUninstallStringValue
         $Silent = $true
@@ -1018,34 +1657,40 @@ function Start-Un1nst4ll3rApp {
     }
 
     try {
-        # 2. Desinstalação AppX
         if ($ProgramType -eq "AppX") {
             Write-Un1Log -Category "UNINSTALL" -Message "Removing AppX package..." -Color Cyan
-            # Usa o AppIdentifier se fornecido, senão tenta pelo AppName
-            $appxFilter = if (![string]::IsNullOrWhiteSpace($AppIdentifier)) { $AppIdentifier } else { $AppName }
-            Get-AppxPackage -Name $appxFilter | Remove-AppxPackage -ErrorAction Stop
+            $appxPackage = Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object {
+                (![string]::IsNullOrWhiteSpace($AppIdentifier) -and ($_.PackageFullName -eq $AppIdentifier -or $_.PackageFamilyName -eq $AppIdentifier -or $_.Name -eq $AppIdentifier)) -or
+                (![string]::IsNullOrWhiteSpace($AppName) -and $_.Name -eq $AppName)
+            } | Select-Object -First 1
+
+            if ($null -eq $appxPackage) {
+                throw "AppX package not found for uninstall."
+            }
+
+            Update-Un1nst4ll3rSpinner -Message "Removendo pacote AppX..."
+            Remove-AppxPackage -Package $appxPackage.PackageFullName -ErrorAction Stop
             Write-Un1Log -Category "UNINSTALL" -Message "AppX removal successful." -Color Green
             return $true
         }
         
-        # 3. Desinstalação MSI (Detectada automaticamente pela string MsiExec)
         elseif ($uninstallCmd -match 'msiexec' -and $uninstallCmd -match '\{([A-Fa-f0-9\-]+)\}') {
             Write-Un1Log -Category "UNINSTALL" -Message "Removing via MSI Exec..." -Color Cyan
-            $msiGuid = $Matches[0] # Pega o {GUID}
-            # Se for discreet, roda silencioso (/qn), senão roda normal (/qb+)
+            $msiGuid = $Matches[0]
             $msiArgs = if ($Silent) { "/x $msiGuid /qn /norestart" } else { "/x $msiGuid /qb+ /norestart" }
-            Start-Process "msiexec.exe" -ArgumentList $msiArgs -Wait -NoNewWindow
+            Write-Un1Log -Category "UNINSTALL-DBG" -Message "MSI launch prepared. FilePath=msiexec.exe | Args=$msiArgs | Silent=$Silent" -Color Blue
+            Update-Un1nst4ll3rSpinner -Message "Removendo via Windows Installer..."
+            $msiProc = Start-Process "msiexec.exe" -ArgumentList $msiArgs -Wait -NoNewWindow -PassThru -Verb RunAs
+            Write-Un1Log -Category "UNINSTALL-DBG" -Message "MSI launch completed. PID=$($msiProc.Id) | ExitCode=$($msiProc.ExitCode)" -Color Blue
             Write-Un1Log -Category "UNINSTALL" -Message "MSI removal command executed." -Color Green
             return $true
         }
 
-        # 4+5. Desinstalação (Silent ou Padrão)
         elseif (![string]::IsNullOrWhiteSpace($uninstallCmd)) {
 
             $logLabel = if ($Silent) { "Silent" } else { "Standard" }
             Write-Un1Log -Category "UNINSTALL" -Message "Removing via $logLabel Uninstall String..." -Color Cyan
 
-            # Normaliza aspas inteligentes
             $uninstallCmd = $uninstallCmd -replace '[""]', '"'
 
             $exe   = ""
@@ -1055,37 +1700,46 @@ function Start-Un1nst4ll3rApp {
                 $parts = $uninstallCmd -split '"'
                 $exe   = $parts[1].Trim()
                 $argms = if ($parts.Count -gt 2) { $parts[2].Trim() } else { "" }
+            } elseif ($uninstallCmd -match '(.*?\.(exe|msi))\s+(.*)') {
+                $exe = $Matches[1].Trim()
+                $argms = $Matches[3].Trim()
             } else {
-                $firstSpace = $uninstallCmd.IndexOf(' ')
-                if ($firstSpace -gt 0) {
-                    $exe   = $uninstallCmd.Substring(0, $firstSpace).Trim()
-                    $argms = $uninstallCmd.Substring($firstSpace + 1).Trim()
-                } else {
-                    $exe   = $uninstallCmd
-                    $argms = ""
-                }
+                $exe = $uninstallCmd.Trim()
+                $argms = ""
             }
 
             try {
                 if ([string]::IsNullOrWhiteSpace($exe)) { throw "Failed to parse executable from uninstall string." }
+                
+                $exeExists = Test-Path $exe -ErrorAction SilentlyContinue
+                Write-Un1Log -Category "UNINSTALL-DBG" -Message "Standard launch prepared. App=$AppName | Silent=$Silent | FilePath=$exe | Exists=$exeExists | Args=$argms | Raw=$uninstallCmd" -Color Blue
 
-                $spArgs = @{ FilePath = $exe; Wait = $true}
+                # Verb RunAs garante elevação de privilégios (UAC) para desinstaladores em Program Files
+                $spArgs = @{ FilePath = $exe; Wait = $true; PassThru = $true; Verb = "RunAs" }
                 if (![string]::IsNullOrWhiteSpace($argms)) { $spArgs.ArgumentList = $argms }
-                if (!$Silent) { $spArgs.NoNewWindow = $false }   # interativo: janela visível
-                else          { $spArgs.NoNewWindow = $true  }   # silencioso: sem janela
 
-                Start-Process @spArgs -ErrorAction Stop
+                $childProc = Start-Process @spArgs -ErrorAction Stop
+                
+                Start-Sleep -Milliseconds 500 
+
+                Write-Un1Log -Category "UNINSTALL-DBG" -Message "Standard launch completed. PID=$($childProc.Id) | ExitCode=$($childProc.ExitCode) | HasExited=$($childProc.HasExited)" -Color Blue
                 Write-Un1Log -Category "UNINSTALL" -Message "$logLabel removal command executed." -Color Green
                 return $true
 
             } catch {
+                Write-Un1Log -Category "UNINSTALL-DBG" -Message "Standard launch failed. FilePath=$exe | Args=$argms | Exists=$(Test-Path $exe -ErrorAction SilentlyContinue) | Error=$_" -Color DarkYellow
                 Write-Un1Log -Category "UNINSTALL" -Message "Start-Process failed [$_], falling back to cmd..." -Color Yellow
                 try {
-                    # ADICIONADO -ErrorAction Stop AQUI TAMBÉM
-                    Start-Process cmd -ArgumentList "/c `"$uninstallCmd`"" -Wait -NoNewWindow -ErrorAction Stop
+                    Write-Un1Log -Category "UNINSTALL-DBG" -Message "CMD fallback prepared. Command=/c `"$uninstallCmd`"" -Color Blue
+                    $fallbackProc = Start-Process cmd -ArgumentList "/c `"$uninstallCmd`"" -Wait -Verb RunAs -ErrorAction Stop -PassThru
+                    
+                    Start-Sleep -Milliseconds 500 
+
+                    Write-Un1Log -Category "UNINSTALL-DBG" -Message "CMD fallback completed. PID=$($fallbackProc.Id) | ExitCode=$($fallbackProc.ExitCode)" -Color Blue
                     Write-Un1Log -Category "UNINSTALL" -Message "cmd fallback executed successfully." -Color Green
                     return $true
                 } catch {
+                    Write-Un1Log -Category "UNINSTALL-DBG" -Message "CMD fallback failed. Error=$_" -Color DarkYellow
                     Write-Un1Log -Category "UNINSTALL" -Message "cmd fallback also failed: $_" -Color Red
                 }
             }
@@ -1101,7 +1755,6 @@ function Start-Un1nst4ll3rApp {
     return $false
 }
 
-
 # ==========================================
 # BLOCO 6: Motor de Limpeza de Vestígios
 # ==========================================
@@ -1110,14 +1763,158 @@ function Remove-Un1nst4ll3rTraces {
         [PSCustomObject]$App
     )
 
+    Initialize-Un1nst4ll3rEvidenceRecord -App $App
     Write-Un1Log -Category "CLEANUP" -Message "Starting trace cleanup for: $($App.Nome)" -Color Yellow
+    Update-Un1nst4ll3rSpinner -Message "Removendo chaves de registro órfãs..."
     $cleanedCount = 0
 
+    function Test-Un1nst4ll3rProtectedCleanupDirectory {
+        param([string]$Path)
+
+        if ([string]::IsNullOrWhiteSpace($Path)) { return $true }
+
+        try {
+            $resolvedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+        } catch {
+            return $true
+        }
+
+        $protectedRoots = @(
+            [Environment]::GetFolderPath('UserProfile'),
+            [Environment]::GetFolderPath('Desktop'),
+            [Environment]::GetFolderPath('MyDocuments'),
+            [Environment]::GetFolderPath('MyPictures'),
+            [Environment]::GetFolderPath('MyMusic'),
+            [Environment]::GetFolderPath('MyVideos'),
+            [Environment]::GetFolderPath('ApplicationData'),
+            [Environment]::GetFolderPath('LocalApplicationData'),
+            [Environment]::GetFolderPath('CommonApplicationData'),
+            [Environment]::GetFolderPath('Programs'),
+            [Environment]::GetFolderPath('Startup'),
+            [Environment]::GetFolderPath('CommonPrograms'),
+            [Environment]::GetFolderPath('CommonStartup'),
+            [Environment]::GetFolderPath('ProgramFiles'),
+            [Environment]::GetFolderPath('ProgramFilesX86'),
+            $env:PUBLIC,
+            (Join-Path $env:USERPROFILE 'Downloads')
+        ) | Where-Object { ![string]::IsNullOrWhiteSpace($_) } |
+            ForEach-Object {
+                try { [System.IO.Path]::GetFullPath($_).TrimEnd('\') } catch { $null }
+            } |
+            Where-Object { ![string]::IsNullOrWhiteSpace($_) } |
+            Sort-Object -Unique
+
+        if ($protectedRoots -contains $resolvedPath) {
+            return $true
+        }
+
+        if ($resolvedPath -match '^[A-Za-z]:$') {
+            return $true
+        }
+
+        return $false
+    }
+
+
+    function Remove-Un1nst4ll3rCleanupDirectory {
+        param([string]$Path)
+
+        if ([string]::IsNullOrWhiteSpace($Path) -or !(Test-Path $Path -ErrorAction SilentlyContinue)) {
+            return $false
+        }
+
+        # Tentativa 1: Modo rápido nativo (como usuário normal)
+        try {
+            Remove-Item $Path -Recurse -Force -Confirm:$false -ErrorAction Stop
+        } catch {}
+
+        if (!(Test-Path $Path -ErrorAction SilentlyContinue)) {
+            return $true
+        }
+
+        # Tentativa 2: Exclusão explícita Bottom-Up (Arquivos primeiro, pastas depois)
+        $removedChild = $false
+        $accessDenied = $false
+        try {
+            $files = @(Get-ChildItem -Path $Path -Force -File -Recurse -ErrorAction SilentlyContinue)
+            foreach ($file in $files) {
+                try {
+                    Remove-Item $file.FullName -Force -ErrorAction Stop
+                    if (!(Test-Path $file.FullName -ErrorAction SilentlyContinue)) {
+                        $removedChild = $true
+                    }
+                } catch {
+                    # Se der acesso negado, marca a flag
+                    if ($_.Exception.Message -match 'Acesso negado|Access is denied|requer elevação') {
+                        $accessDenied = $true
+                    }
+                    Write-Un1Log -Category "CLEANUP" -Message "Failed to delete file: $($file.FullName) | Reason: $($_.Exception.Message)" -Color DarkYellow
+                }
+            }
+            
+            $dirs = @(Get-ChildItem -Path $Path -Force -Directory -Recurse -ErrorAction SilentlyContinue | Sort-Object { $_.FullName.Length } -Descending)
+            foreach ($dir in $dirs) {
+                try {
+                    Remove-Item $dir.FullName -Recurse -Force -Confirm:$false -ErrorAction SilentlyContinue
+                    if (!(Test-Path $dir.FullName -ErrorAction SilentlyContinue)) {
+                        $removedChild = $true
+                    }
+                } catch {
+                     Write-Un1Log -Category "CLEANUP" -Message "Failed to delete dir: $($dir.FullName) | Reason: $($_.Exception.Message)" -Color DarkYellow
+                }
+            }
+        } catch {}
+
+        # Tentativa 3: Deleta a pasta raiz
+        try {
+            Remove-Item $Path -Recurse -Force -Confirm:$false -ErrorAction SilentlyContinue
+        } catch {}
+
+        if (!(Test-Path $Path -ErrorAction SilentlyContinue)) {
+            return $true
+        }
+
+        # ==========================================
+        # TENTATIVA 4: ELEVAÇÃO DIRECIONADA (A MÁGICA)
+        # Se falhou por Acesso Negado, o script atualiza o CMD em modo Admin APENAS para apagar essa pasta
+        # ==========================================
+        if ($accessDenied) {
+            Write-Un1Log -Category "CLEANUP" -Message "Access denied detected. Attempting targeted elevation for: $Path" -Color Magenta
+            try {
+                # Usa o cmd /c rmdir /s /q que é silencioso e extremamente rápido, com -Verb RunAs
+                Start-Process -FilePath "cmd.exe" -ArgumentList "/c rmdir /s /q `"$Path`"" -Verb RunAs -Wait -WindowStyle Hidden -ErrorAction Stop
+                
+                # Pausa mínima para o Windows consolidar o sistema de arquivos
+                Start-Sleep -Milliseconds 500
+
+                if (!(Test-Path $Path -ErrorAction SilentlyContinue)) {
+                    Write-Un1Log -Category "CLEANUP" -Message "Successfully removed via elevated process: $Path" -Color Green
+                    return $true
+                }
+            } catch {
+                Write-Un1Log -Category "CLEANUP" -Message "Targeted elevation failed or was cancelled by user: $Path" -Color Red
+            }
+        }
+
+        # Relatório final de falha
+        $leftovers = @()
+        try {
+            $leftovers = @(Get-ChildItem -Path $Path -Force -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+        } catch {}
+
+        $leftoverText = if ($leftovers.Count -gt 0) { $leftovers -join '; ' } else { 'Unknown residual content' }
+        Write-Un1Log -Category "CLEANUP" -Message "Directory cleanup incomplete: $Path | Remaining=$leftoverText" -Color DarkYellow
+        return $removedChild
+    }    
+
     $regPaths = @(
-        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$($App.Chave)",
-        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\$($App.Chave)",
-        "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$($App.Chave)"
-    )
+        @($App.CleanupRegistryTargets) +
+        @(
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$($App.Chave)",
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\$($App.Chave)",
+            "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$($App.Chave)"
+        )
+    ) | Where-Object { ![string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique
 
     foreach ($reg in $regPaths) {
         if (Test-Path $reg) {
@@ -1127,10 +1924,13 @@ function Remove-Un1nst4ll3rTraces {
         }
     }
 
-    if (![string]::IsNullOrWhiteSpace($App.Local) -and (Test-Path $App.Local)) {
-        Write-Un1Log -Category "CLEANUP" -Message "Removing orphaned installation folder: $($App.Local)" -Color Cyan
-        Remove-Item $App.Local -Recurse -Force -ErrorAction SilentlyContinue
-        $cleanedCount++
+    $shortcutPaths = @($App.ShortcutPaths) | Where-Object { ![string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique
+    foreach ($shortcutPath in $shortcutPaths) {
+        if ($shortcutPath -match '\.lnk$' -and (Test-Path $shortcutPath -ErrorAction SilentlyContinue)) {
+            Write-Un1Log -Category "CLEANUP" -Message "Removing leftover shortcut: $shortcutPath" -Color Cyan
+            Remove-Item $shortcutPath -Force -ErrorAction SilentlyContinue
+            $cleanedCount++
+        }
     }
 
     $safeAppName = $App.Nome -replace '\(.*\)', '' -replace '\s+\d+.*', '' -replace '[^\w\s\-+]', ''
@@ -1144,11 +1944,25 @@ function Remove-Un1nst4ll3rTraces {
         "$env:LOCALAPPDATA\Programs\$firstKeyword"
     )
 
-    foreach ($path in $residualPaths) {
+    $directoryTargets = @(
+        @($App.CleanupDirectoryTargets) +
+        @($App.Local) +
+        $residualPaths
+    ) | Where-Object { ![string]::IsNullOrWhiteSpace($_) } | Sort-Object { $_.Length } -Descending | Select-Object -Unique
+    
+    Update-Un1nst4ll3rSpinner -Message "Removendo pastas de dados residuais..."
+    foreach ($path in $directoryTargets) {
+        if (Test-Un1nst4ll3rProtectedCleanupDirectory -Path $path) {
+            Write-Un1Log -Category "CLEANUP" -Message "Protected directory skipped: $path" -Color Blue
+            continue
+        }
+
         if (Test-Path $path) {
             Write-Un1Log -Category "CLEANUP" -Message "Removing residual data folder: $path" -Color Cyan
-            Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue
-            $cleanedCount++
+            $removed = Remove-Un1nst4ll3rCleanupDirectory -Path $path
+            if ($removed) {
+                $cleanedCount++
+            }
         }
     }
 

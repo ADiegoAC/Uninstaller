@@ -15,6 +15,7 @@
 				"matchCommandLine": true
 			}
 		},
-		"files.encoding": "utf8bom"
+		"files.encoding": "utf8bom",
+		"editor.fontSize": 12
 	}
 }

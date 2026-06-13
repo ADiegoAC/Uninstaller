@@ -1,4 +1,4 @@
-# ======================================================================
+﻿# ======================================================================
 #  Un1nst4ll3r - Graphical User Interface
 #  Version: 1.5.1
 # ======================================================================
@@ -348,10 +348,28 @@ function Get-Un1nst4ll3rAppIcon {
         param ([string]$FilePath)
         if ([string]::IsNullOrWhiteSpace($FilePath)) { return $null }
         try {
-            $cleanPath = $FilePath
+            $cleanPath = [System.Environment]::ExpandEnvironmentVariables($FilePath.Trim())
             # Remove trailing indexes from icon paths (e.g., C:\app.exe,0)
             if ($cleanPath -match '^(.+?),(-?\d+)$') { $cleanPath = $Matches[1] }
             if (Test-Path $cleanPath -ErrorAction SilentlyContinue) {
+                if ($cleanPath -match '\.(png|jpe?g|bmp|gif)$') {
+                    $sourceImage = [System.Drawing.Image]::FromFile($cleanPath)
+                    try {
+                        $bitmap = New-Object System.Drawing.Bitmap(32, 32)
+                        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+                        try {
+                            $graphics.Clear([System.Drawing.Color]::Transparent)
+                            $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                            $graphics.DrawImage($sourceImage, 0, 0, 32, 32)
+                        } finally {
+                            $graphics.Dispose()
+                        }
+                        return $bitmap
+                    } finally {
+                        $sourceImage.Dispose()
+                    }
+                }
+
                 $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($cleanPath)
                 if ($null -ne $icon) { return $icon.ToBitmap() }
                 
@@ -367,10 +385,8 @@ function Get-Un1nst4ll3rAppIcon {
 
     # Strategy 1: Attempt to use the DisplayIcon registry path directly
     if (![string]::IsNullOrWhiteSpace($IconPath)) {
-        if (Test-Path $IconPath -ErrorAction SilentlyContinue) {
-            $bmp = Test-ExtractIcon $IconPath
-            if ($bmp) { return $bmp }
-        }
+        $bmp = Test-ExtractIcon $IconPath
+        if ($bmp) { return $bmp }
     }
 
     # Strategy 2: Attempt to pull icon from matched memory shortcuts
@@ -703,6 +719,33 @@ $dataGridView.Columns["Local"].AutoSizeMode = [System.Windows.Forms.DataGridView
 $dataGridView.Columns["Local"].MinimumWidth = 150
 
 # ============================================================================
+# Context Menu and Right-Click Selection
+# ============================================================================
+$script:contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
+$script:menuOpenFolder = New-Object System.Windows.Forms.ToolStripMenuItem
+$script:menuOpenFolder.Name = "menuOpenFolder"
+$script:menuOpenFolder.Text = $script:LangData.MenuOpenFolder
+$script:menuOpenFolder.Add_Click({
+    if ($dataGridView.CurrentRow) {
+        $path = $dataGridView.CurrentRow.Cells["Local"].Value
+        if (![string]::IsNullOrWhiteSpace($path) -and (Test-Path $path)) {
+            Start-Process "explorer.exe" -ArgumentList "`"$path`""
+        }
+    }
+})
+$script:contextMenu.Items.Add($script:menuOpenFolder) | Out-Null
+$dataGridView.ContextMenuStrip = $script:contextMenu
+
+$dataGridView.Add_CellMouseDown({
+    param($sender, $e)
+    if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
+        if ($e.RowIndex -ge 0 -and $e.ColumnIndex -ge 0) {
+            $dataGridView.CurrentCell = $dataGridView.Rows[$e.RowIndex].Cells[$e.ColumnIndex]
+        }
+    }
+})
+
+# ============================================================================
 # Sorting State Tracking Variables
 # ============================================================================
 $script:lastSortedColumn = $null
@@ -846,6 +889,10 @@ function Update-UILanguage {
     $dataGridView.Columns["Local"].HeaderText = $L.ColLocation
     $dataGridView.Columns["Status"].HeaderText = $L.ColStatus
     
+    if ($null -ne $script:menuOpenFolder) {
+        $script:menuOpenFolder.Text = $L.MenuOpenFolder
+    }
+
     $splashTitle.Text = $L.SplashTitle
     $splashSubTitle.Text = $L.SplashAnalyze
     $splashLogLabel.Text = $L.SplashInit
@@ -875,7 +922,7 @@ function Update-Grid {
         $deepResult = Get-Un1nst4ll3rSizeEngine -ProgramList $deepResult
         
         & $Global:Un1LogAction $L.PhaseExport
-        $deepResult | Select-Object Nome, Versao, Fabricante, Tamanho, Local, Tipo, Status, InstallDate, HelpLink, UninstallString, NoRemove, NoModify, NoRepair, ModifyPath, IsMsi, ExePath, Chave, DisplayIcon, QuietUninstallString, ProductCode, UpgradeCode, ShortcutTitle, ShortcutTarget | ConvertTo-Json -Depth 3 | Out-File -FilePath $script:jsonPath -Encoding UTF8        
+        $deepResult | ConvertTo-Json -Depth 8 | Out-File -FilePath $script:jsonPath -Encoding UTF8        
         
         & $Global:Un1LogAction $L.PhaseGrid
         Load-GridFromJson -Path $script:jsonPath
@@ -976,6 +1023,76 @@ function Load-GridFromJson{
     }
 }
 
+function Get-Un1nst4ll3rJsonCacheData {
+    if (!(Test-Path $script:jsonPath)) { return @() }
+
+    $jsonRaw = Get-Content -Path $script:jsonPath -Raw -Encoding UTF8
+    if ([string]::IsNullOrWhiteSpace($jsonRaw)) { return @() }
+
+    return @((ConvertFrom-Json -InputObject $jsonRaw))
+}
+
+function Save-Un1nst4ll3rJsonCacheData {
+    param([array]$Data)
+
+    ConvertTo-Json -InputObject @($Data) -Depth 8 | Out-File -FilePath $script:jsonPath -Encoding UTF8
+}
+
+function Find-Un1nst4ll3rJsonAppRecord {
+    param(
+        [array]$CacheData,
+        [System.Windows.Forms.DataGridViewRow]$GridRow
+    )
+
+    if ($null -eq $GridRow) { return $null }
+
+    $selectedName = [string]$GridRow.Cells["Nome"].Value
+    $selectedType = [string]$GridRow.Cells["Tipo"].Value
+    $selectedLocal = [string]$GridRow.Cells["Local"].Value
+
+    $matches = @($CacheData | Where-Object { $_.Nome -eq $selectedName })
+    if ($matches.Count -gt 1 -and ![string]::IsNullOrWhiteSpace($selectedType)) {
+        $typedMatches = @($matches | Where-Object { $_.Tipo -eq $selectedType })
+        if ($typedMatches.Count -gt 0) { $matches = $typedMatches }
+    }
+    if ($matches.Count -gt 1 -and ![string]::IsNullOrWhiteSpace($selectedLocal)) {
+        $localMatches = @($matches | Where-Object { $_.Local -eq $selectedLocal })
+        if ($localMatches.Count -gt 0) { $matches = $localMatches }
+    }
+
+    return ($matches | Select-Object -First 1)
+}
+
+function Remove-Un1nst4ll3rJsonAppRecord {
+    param(
+        [array]$CacheData,
+        [System.Windows.Forms.DataGridViewRow]$GridRow
+    )
+
+    if ($null -eq $GridRow) { return @($CacheData) }
+
+    $selectedName = [string]$GridRow.Cells["Nome"].Value
+    $selectedType = [string]$GridRow.Cells["Tipo"].Value
+    $selectedLocal = [string]$GridRow.Cells["Local"].Value
+    $removed = $false
+    $remaining = [System.Collections.ArrayList]::new()
+
+    foreach ($item in @($CacheData)) {
+        $sameName = ($item.Nome -eq $selectedName)
+        $sameType = ([string]::IsNullOrWhiteSpace($selectedType) -or $item.Tipo -eq $selectedType)
+        $sameLocal = ([string]::IsNullOrWhiteSpace($selectedLocal) -or $item.Local -eq $selectedLocal)
+
+        if (!$removed -and $sameName -and $sameType -and $sameLocal) {
+            $removed = $true
+            continue
+        }
+
+        [void]$remaining.Add($item)
+    }
+
+    return @($remaining.ToArray())
+}
+
 # ==========================================
 # 18. Interface Event Bindings
 # ==========================================
@@ -988,19 +1105,65 @@ $btnDeepScan.Add_Click({
     Update-Grid
 })
 
-$btnUninstall.Add_Click({
-    $AppName = $dataGridView.Item("Nome", $dataGridView.CurrentRow.Index).Value
-    $jsonRaw = Get-Content -Path $script:jsonPath -Raw -Encoding UTF8
-    $AppData = ConvertFrom-Json -InputObject $jsonRaw
-    $AppData = $AppData | Where-Object { $_.Nome -eq $AppName }
-    $params = @{
-        AppName                   = $AppData.Nome
-        UninstallStringValue      = $AppData.UninstallString
-        QuietUninstallStringValue = $AppData.QuietUninstallString
-        ProgramType               = $AppData.Tipo
-        AppIdentifier             = $AppData.Chave
+ $btnUninstall.Add_Click({
+    if ($null -eq $dataGridView.CurrentRow) { return }
+
+    $cacheData = Get-Un1nst4ll3rJsonCacheData
+    $AppData = Find-Un1nst4ll3rJsonAppRecord -CacheData $cacheData -GridRow $dataGridView.CurrentRow
+    if ($null -eq $AppData) {
+        $statusLabel.Text = $script:LangData.StatusCacheError
+        return
     }
-    $UninstallResult = Start-Un1nst4ll3rApp @params
+
+    # Calcula a posição: Canto inferior DIREITO do form principal
+    # Largura do form menos a largura da janelinha do spinner (360) e uma margem (10)
+    $spinnerPosX = $form.Location.X + $form.Width - 380 - 10
+    $spinnerPosY = $form.Location.Y + $form.Height - 100 - 20 
+    $spinnerPos = New-Object System.Drawing.Point($spinnerPosX, $spinnerPosY)
+
+    # Inicia o Spinner
+    Start-Un1nst4ll3rSpinner -InitialMessage "Preparando desinstalação..." -Location $spinnerPos
+
+    try {
+        Update-Un1nst4ll3rSpinner -Message "Desinstalando $($AppData.Nome)..."
+        
+        $params = @{
+            AppName                   = $AppData.Nome
+            UninstallStringValue      = $AppData.UninstallString
+            QuietUninstallStringValue = $AppData.QuietUninstallString
+            ProgramType               = $AppData.Tipo
+            AppIdentifier             = $AppData.Chave
+        }
+        $UninstallResult = Start-Un1nst4ll3rApp @params
+
+        if (!$UninstallResult) {
+            $statusLabel.Text = $script:LangData.UninstallCancelled
+            return # O Finally abaixo vai fechar o Spinner
+        }
+
+        Update-Un1nst4ll3rSpinner -Message "Verificando vestígios..."
+        $uninstallCompleted = Test-Un1nst4ll3rUninstallCompleted -App $AppData
+        if (!$uninstallCompleted) {
+            $statusLabel.Text = $script:LangData.StatusReady
+            [System.Windows.Forms.MessageBox]::Show(($script:LangData.MsgUninstallNotCompleted -f $AppData.Nome), $script:LangData.Title, "OK", "Warning")
+            return
+        }
+
+        Update-Un1nst4ll3rSpinner -Message "Limpando vestígios e registros..."
+        $cleanedCount = Remove-Un1nst4ll3rTraces -App $AppData
+
+        Update-Un1nst4ll3rSpinner -Message "Atualizando lista de aplicativos..."
+        $statusLabel.Text = $script:LangData.StatusRefreshingCache
+        $updatedCache = Remove-Un1nst4ll3rJsonAppRecord -CacheData $cacheData -GridRow $dataGridView.CurrentRow
+        Save-Un1nst4ll3rJsonCacheData -Data $updatedCache
+        Load-GridFromJson -Path $script:jsonPath | Out-Null
+        
+        $statusLabel.Text = $script:LangData.StatusUninstallComplete -f $AppData.Nome, $cleanedCount
+
+    } finally {
+        # Garante que o spinner feche, mesmo se der erro no meio
+        Stop-Un1nst4ll3rSpinner
+    }
 })
 
 $btnCleanTraces.Add_Click({
