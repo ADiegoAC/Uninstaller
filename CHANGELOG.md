@@ -2,7 +2,7 @@
 
 > Cada grupo (**Motor**, **UI**, **Integração**) evolui com seu próprio versionamento independente. O número do título de cada bloco representa a timeline combinada do projeto; a tag `[Grupo - x.y.z]` indica a versão real daquele componente.
 
-**Versões atuais:** Motor `3.1.1` · UI `1.5.1` · Integração `2.0.0`
+**Versões atuais:** Motor `3.2.0` · UI `1.7.0` · Integração `2.3.0`
 
 ---
 
