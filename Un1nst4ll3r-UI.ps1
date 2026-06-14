@@ -341,7 +341,7 @@ if (Test-Path $script:sysBankPath) {
 # Helper Function: Extract Application Icon
 # ==========================================
 function Get-Un1nst4ll3rAppIcon {
-    param ([string]$AppName, [string]$IconPath, [string]$ExePath, [string]$InstallLocal)
+    param ([string]$AppName, [string]$IconPath, [string]$ExePath, [string]$InstallLocal, [string]$Chave, [array]$ShortcutIconLocations)
 
     # Inner helper to safely extract icons from files
     function Test-ExtractIcon {
@@ -383,10 +383,13 @@ function Get-Un1nst4ll3rAppIcon {
         return $null
     }
 
-    # Strategy 1: Attempt to use the DisplayIcon registry path directly
+    # Strategy 1: DisplayIcon do Registro ou Ícone dos Atalhos (Ordenado por prioridade)
     if (![string]::IsNullOrWhiteSpace($IconPath)) {
         $bmp = Test-ExtractIcon $IconPath
-        if ($bmp) { return $bmp }
+        if ($bmp) { 
+            Write-Un1Log -Category "ICON" -Message "S1 Icon found [DisplayIcon]." -Color Brown
+            return $bmp 
+        }
     }
 
     # Strategy 2: Attempt to pull icon from matched memory shortcuts
@@ -399,30 +402,107 @@ function Get-Un1nst4ll3rAppIcon {
                 $_.Target -notmatch 'uninstall|unins\d+|setup' -and $_.Target -notmatch '\.(url|html?|website)$'
             } | Select-Object -First 1
             
-            if ($lnkMatch -and (Test-Path $lnkMatch.Target -ErrorAction SilentlyContinue)) {
-                $bmp = Test-ExtractIcon $lnkMatch.Target
-                if ($bmp) { return $bmp }
+            if ($lnkMatch) {
+                # PRIORIDADE A: O atalho tem um ícone customizado definido? (Ex: app.ico,0)
+                if (![string]::IsNullOrWhiteSpace($lnkMatch.IconLocation)) {
+                    $bmp = Test-ExtractIcon $lnkMatch.IconLocation
+                    if ($bmp) { 
+                        Write-Un1Log -Category "ICON" -Message "S2 Icon found[Shortcut IconLocation]." -Color Brown
+                        return $bmp 
+                    }
+                }
+                
+                # PRIORIDADE B: Se não achou no IconLocation, tenta extrair do Target (o .exe)
+                if (![string]::IsNullOrWhiteSpace($lnkMatch.Target) -and (Test-Path $lnkMatch.Target -ErrorAction SilentlyContinue)) {
+                    $bmp = Test-ExtractIcon $lnkMatch.Target
+                    if ($bmp) { 
+                        Write-Un1Log -Category "ICON" -Message "S2 Icon found[Shortcut Target]." -Color Brown
+                        return $bmp 
+                    }
+                }
             }
         }
     }
 
-    # Strategy 3: Attempt to resolve icon through the System Package Bank rules
+    # Strategy 3: Icon found ShortcutIconLocation.
+    if ($null -ne $ShortcutIconLocations -and $ShortcutIconLocations.Count -gt 0) {
+        foreach ($scIcon in $ShortcutIconLocations) {
+            if (![string]::IsNullOrWhiteSpace($scIcon)) {
+                # O Test-ExtractIcon já cuida de limpar o ",0" ou as aspas automaticamente!
+                $bmp = Test-ExtractIcon $scIcon
+                if ($bmp) { 
+                    Write-Un1Log -Category "ICON" -Message "S3 Icon found [ShortcutIconLocation]." -Color Brown
+                    return $bmp 
+                }
+            }
+        }
+    }
+
+    # Strategy 4: Attempt to resolve icon through the System Package Bank rules
     if (![string]::IsNullOrWhiteSpace($AppName) -and $Global:SysPkgBank.Count -gt 0) {
         foreach ($rule in $Global:SysPkgBank) {
             try {
                 if ($AppName -match $rule.Pattern) {
                     $expandedIconPath = [System.Environment]::ExpandEnvironmentVariables($rule.IconPath)
                     $bmp = Test-ExtractIcon $expandedIconPath
-                    if ($bmp) { return $bmp }
+                    if ($bmp) { 
+                        Write-Un1Log -Category "ICON" -Message "S4 Icon found[Package Bank]. Icon: $($bmp)" -Color Brown
+                        return $bmp }
                 }
             } catch {}
+        }
+    }
+
+    # Strategy 5: Windows Installer Cache (GUID folder)
+    # Se a Chave for um GUID válido, procuramos na pasta oculta do Windows Installer
+    if (![string]::IsNullOrWhiteSpace($Chave) -and $Chave -match '^\{[A-Fa-f0-9\-]+\}$') {
+        $installerPath = Join-Path $env:windir "Installer\$Chave"
+        
+        if (Test-Path $installerPath -PathType Container -ErrorAction SilentlyContinue) {
+            # Busca arquivos dentro da pasta do GUID, ignorando patches (.msp) e transforms (.mst)
+            $candidateFiles = Get-ChildItem -Path $installerPath -File -ErrorAction SilentlyContinue | Where-Object {
+                $_.Extension -notin @('.msp', '.mst', '.dll')
+            }
+            
+            # Prioridade 1: Arquivos que se chamam "icon" ou "ARPPRODUCTICON" (padrão comum do MSI)
+            $iconFile = $candidateFiles | Where-Object { $_.Name -like "icon*" -or $_.Name -like "ARPPRODUCTICON*" } | Select-Object -First 1
+            
+            # Prioridade 2: Qualquer arquivo sem extensão, ou .exe, ou .ico
+            if (!$iconFile) {
+                $iconFile = $candidateFiles | Where-Object { 
+                    [string]::IsNullOrWhiteSpace($_.Extension) -or $_.Extension -in @('.exe', '.ico') 
+                } | Select-Object -First 1
+            }
+
+            # Se encontramos um candidato na pasta do Installer
+            if ($iconFile) {
+                # Tenta o método convencional primeiro (funciona se for .exe ou .ico)
+                $bmp = Test-ExtractIcon $iconFile.FullName
+                if ($bmp) { 
+                    Write-Un1Log -Category "ICON" -Message "S5 Icon found[Installer-ext]. Icon: $($bmp)" -Color Brown
+                    return $bmp }
+
+                # TRUQUE PARA ARQUIVOS SEM EXTENSÃO:
+                # O método ExtractAssociatedIcon falha sem extensão. Se falhou, tentamos 
+                # forçar a leitura como um arquivo de ícone raw usando o construtor do Icon.
+                try {
+                    $rawIcon = New-Object System.Drawing.Icon($iconFile.FullName)
+                    $bmp = $rawIcon.ToBitmap()
+                    $rawIcon.Dispose()
+                    if ($bmp) { 
+                    Write-Un1Log -Category "ICON" -Message "S5 Icon found[Installer-noExt]. Icon: $($bmp)" -Color Brown
+                        return $bmp }
+                } catch {
+                    # Se der erro, o arquivo não é um ícone válido, ignoramos.
+                }
+            }
         }
     }
 
     # Define a blacklist to avoid grabbing uninstaller/helper icons
     $icoBlacklist = @('^uninstall', '^unins\d+', '^setup', '^remove', '^help', 'update$')
     
-    # Strategy 4: Extract from discovered ExePath
+    # Strategy 6: Extract from discovered ExePath
     if (![string]::IsNullOrWhiteSpace($ExePath) -and (Test-Path $ExePath -ErrorAction SilentlyContinue)) {
         $exeDir = Split-Path $ExePath
         $isSubprocess = (![string]::IsNullOrWhiteSpace($InstallLocal) -and $exeDir -ne $InstallLocal)
@@ -437,7 +517,9 @@ function Get-Un1nst4ll3rAppIcon {
                 $mainIco = $rootIcos | Where-Object { $_.BaseName -like "*$safeAppName*" } | Select-Object -First 1
                 if (!$mainIco) { $mainIco = $rootIcos | Select-Object -First 1 }
                 $bmp = Test-ExtractIcon $mainIco.FullName
-                if ($bmp) { return $bmp }
+                if ($bmp) { 
+                    Write-Un1Log -Category "ICON" -Message "S6 Icon found[ExePath]. Icon: $($bmp)" -Color Brown
+                    return $bmp }
             }
         }
         
@@ -446,7 +528,7 @@ function Get-Un1nst4ll3rAppIcon {
         if ($bmp) { return $bmp }
     }
 
-    # Strategy 5: Deep search within the Install Location for any valid .ico file
+    # Strategy 7: Deep search within the Install Location for any valid .ico file
     if (![string]::IsNullOrWhiteSpace($InstallLocal) -and (Test-Path $InstallLocal -ErrorAction SilentlyContinue)) {
         $icoFiles = @(Get-ChildItem -Path $InstallLocal -Filter "*.ico" -File -ErrorAction SilentlyContinue)
         $icoFiles += @(Get-ChildItem -Path "$InstallLocal\*\*.ico" -File -ErrorAction SilentlyContinue)
@@ -460,7 +542,9 @@ function Get-Un1nst4ll3rAppIcon {
             $mainIco = $validIcos | Where-Object { $_.BaseName -like "*$safeAppName*" } | Select-Object -First 1
             if (!$mainIco) { $mainIco = $validIcos | Select-Object -First 1 }
             $bmp = Test-ExtractIcon $mainIco.FullName
-            if ($bmp) { return $bmp }
+            if ($bmp) { 
+                Write-Un1Log -Category "ICON" -Message "S7 Icon found[ICO File]. Icon: $($bmp)" -Color Brown
+                return $bmp }
         }
     }
     
@@ -960,6 +1044,12 @@ function Load-GridFromJson{
         $jsonRaw = Get-Content -Path $Path -Raw -Encoding UTF8
         $data = ConvertFrom-Json -InputObject $jsonRaw
 
+        foreach ($row in $dataGridView.Rows) {
+            if ($null -ne $row.Cells["Icone"].Value -and $row.Cells["Icone"].Value -is [System.Drawing.Image]) {
+                $row.Cells["Icone"].Value.Dispose()
+            }
+        }
+
         $dataGridView.Rows.Clear()
         $orphanCount = 0
 
@@ -967,9 +1057,10 @@ function Load-GridFromJson{
             $rowIndex = $dataGridView.Rows.Add()
             $row = $dataGridView.Rows[$rowIndex]
             
-            # Fetch application Icon dynamically
-            $appIcon = Get-Un1nst4ll3rAppIcon -AppName $app.Nome -IconPath $app.DisplayIcon -ExePath $app.ExePath -InstallLocal $app.Local
+            # Garante que se a propriedade não existir no JSON velho, vire um array vazio em vez de null
+            $scIcons = @($app.ShortcutIconLocations)
 
+            $appIcon = Get-Un1nst4ll3rAppIcon -AppName $app.Nome -IconPath $app.DisplayIcon -ExePath $app.ExePath -InstallLocal $app.Local -Chave $app.Chave -ShortcutIconLocations $scIcons
             $row.Cells["Icone"].Value = $appIcon           
             $row.Cells["Nome"].Value = $app.Nome
             $row.Cells["Versao"].Value = $app.Versao

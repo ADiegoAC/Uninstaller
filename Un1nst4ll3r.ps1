@@ -153,11 +153,13 @@ function Get-Un1nst4ll3rShortcutCache {
         [PSCustomObject]@{ Path = $userShellPaths.Desktop; Scope = "Desktop" },
         [PSCustomObject]@{ Path = $userShellPaths.Programs; Scope = "StartMenu" },
         [PSCustomObject]@{ Path = $userShellPaths.Startup; Scope = "Startup" },
+        # NOVO: Adicionando a Barra de Tarefas (Taskbar Pinned)
+        [PSCustomObject]@{ Path = "$env:APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar"; Scope = "Taskbar" },
         [PSCustomObject]@{ Path = $machineShellPaths.'Common Desktop'; Scope = "CommonDesktop" },
         [PSCustomObject]@{ Path = $machineShellPaths.'Common Programs'; Scope = "CommonStartMenu" },
         [PSCustomObject]@{ Path = $machineShellPaths.'Common Startup'; Scope = "CommonStartup" }
     ) | Where-Object { ![string]::IsNullOrWhiteSpace($_.Path) } |
-        ForEach-Object { [PSCustomObject]@{ Path = [System.Environment]::ExpandEnvironmentVariables($_.Path); Scope = $_.Scope } } |
+        ForEach-Object { [PSCustomObject]@{ Path = [System.Environment]::ExpandEnvironmentVariables($_.Path); scope = $_.Scope } } |
         Sort-Object Path -Unique
 
     foreach ($root in $shortcutRoots) {
@@ -167,13 +169,22 @@ function Get-Un1nst4ll3rShortcutCache {
             foreach ($lnk in $lnks) {
                 try {
                     $shortcut = $shell.CreateShortcut($lnk.FullName)
-                    $target = $shortcut.TargetPath
-                    if (![string]::IsNullOrWhiteSpace($target)) {
+                    
+                    # NOVO: Expande variáveis de ambiente CRUAS que o COM retorna (ex: %LocalAppData%)
+                    $rawTarget = $shortcut.TargetPath
+                    $expandedTarget = if (![string]::IsNullOrWhiteSpace($rawTarget)) { [System.Environment]::ExpandEnvironmentVariables($rawTarget) } else { "" }
+                    
+                    $rawIconLoc = $shortcut.IconLocation
+                    $expandedIconLoc = if (![string]::IsNullOrWhiteSpace($rawIconLoc)) { [System.Environment]::ExpandEnvironmentVariables($rawIconLoc) } else { "" }
+
+                    # MUDANÇA DE LÓGICA: Se tem Target, guarda. Se não tem Target, mas TEM IconLocation, guarda também!
+                    if (![string]::IsNullOrWhiteSpace($expandedTarget) -or ![string]::IsNullOrWhiteSpace($expandedIconLoc)) {
                         $shortcutCache.Add([PSCustomObject]@{
                             LnkName      = $lnk.BaseName
-                            Target       = $target
-                            WorkingDir   = $shortcut.WorkingDirectory
-                            IconLocation = $shortcut.IconLocation
+                            Target       = $expandedTarget
+                            Arguments    = $shortcut.Arguments
+                            WorkingDir   = if (![string]::IsNullOrWhiteSpace($shortcut.WorkingDirectory)) { [System.Environment]::ExpandEnvironmentVariables($shortcut.WorkingDirectory) } else { "" }
+                            IconLocation = $expandedIconLoc
                             ShortcutPath = $lnk.FullName
                             ShortcutScope = $root.Scope
                         }) | Out-Null
@@ -183,7 +194,7 @@ function Get-Un1nst4ll3rShortcutCache {
         }
     }
     
-    Write-Un1Log -Category "SHORTCUT" -Message "Cache complete. $($shortcutCache.Count) shortcuts mapped." -Color Green
+    Write-Un1Log -Category "SHORTCUT" -Message "Cache complete. $($shortcutCache.Count) shortcuts mapped (including Taskbar)." -Color Green
     return $shortcutCache
 }
 
@@ -1059,19 +1070,31 @@ function Get-Un1nst4ll3rDeepSize {
                 $_.LnkName -like "*$safeAppName*" 
             }
             
-            # NOVA LÓGICA: Classificar por NÍVEL DE CONFIANÇA para evitar falsos positivos como "Install Arduino Drivers"
+            # NOVA LÓGICA: Classificar por NÍVEL DE CONFIANÇA para evitar falsos positivos
             $exactMatch = @($lnkFiles | Where-Object { $_.LnkName -ieq $prog.Nome })
             $startsWithMatch = @($lnkFiles | Where-Object { $_.LnkName -ilike "$($prog.Nome)*" -and $_.LnkName -ine $prog.Nome })
             $containsMatch = @($lnkFiles | Where-Object { $_.LnkName -ilike "*$($prog.Nome)*" -and $_.LnkName -inotlike "$($prog.Nome)*" })
 
-            # Executa na ordem: Exato -> Começa com -> Contém (o que estava causando o erro fica por último)
             $prioritizedLnks = @($exactMatch) + @($startsWithMatch) + @($containsMatch)
 
             foreach ($lnk in $prioritizedLnks) {
-                # ... o código interior do foreach permanece EXATAMENTE o mesmo de antes ...
                 $target = $lnk.Target
                 $startIn = $lnk.WorkingDir
                 
+                # ======================================================================
+                # PASSO 1: SEMPRE registra a evidência do ÍCONE e Metadados, não importa o Target!
+                # Isso garante que apps como o Discord (Target = Update.exe) não percam o ícone.
+                # ======================================================================
+                if (![string]::IsNullOrWhiteSpace($lnk.IconLocation)) {
+                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutIconLocations" -Value $lnk.IconLocation
+                }
+                Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutTitles" -Value $lnk.LnkName
+                Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutPaths" -Value $lnk.ShortcutPath
+                Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutScopes" -Value $lnk.ShortcutScope
+
+                # ======================================================================
+                # PASSO 2: Validação rigorosa do TARGET para achar a pasta de instalação (guessedPath)
+                # ======================================================================
                 if (![string]::IsNullOrWhiteSpace($target) -and (Test-Path $target -ErrorAction SilentlyContinue) -and $target -match '\.exe$' -and $target -notmatch 'Windows\\System') {
                     if ($target -notmatch 'uninstall|unins\d+|setup') {
                         $exeFromShortcut = $target
@@ -1079,11 +1102,8 @@ function Get-Un1nst4ll3rDeepSize {
                         $prog.ShortcutTarget = $target
                         $prog.ShortcutPath = $lnk.ShortcutPath
                         $prog.ShortcutScope = $lnk.ShortcutScope
-                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutTitles" -Value $lnk.LnkName
+                        
                         Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutTargets" -Value $target
-                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutPaths" -Value $lnk.ShortcutPath
-                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutScopes" -Value $lnk.ShortcutScope
-                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutIconLocations" -Value $lnk.IconLocation
                         Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $target
                         
                         $dir = if (![string]::IsNullOrWhiteSpace($startIn) -and (Test-Path $startIn)) { $startIn } else { Split-Path $target }
@@ -1095,10 +1115,27 @@ function Get-Un1nst4ll3rDeepSize {
                         }
                         break # Sai no PRIMEIRO match de alta confiança que for válido no disco
                     }
+                } 
+                # ======================================================================
+                # BÔNUS: E se o Target for ruim, mas o ÍCONE aponta pra pasta do app?
+                # Ex: IconLocation = "C:\App\app.ico,0" -> Podemos deduzir que a pasta é C:\App!
+                # ======================================================================
+                elseif (!$guessedPath -and ![string]::IsNullOrWhiteSpace($lnk.IconLocation)) {
+                    # Limpa o ,0 e aspas para pegar só o caminho do arquivo
+                    $cleanIconPath = $lnk.IconLocation -replace ',\d+$','' -replace '"',''
+                    $iconDir = Split-Path $cleanIconPath -ErrorAction SilentlyContinue
+                    
+                    if (![string]::IsNullOrWhiteSpace($iconDir) -and (Test-Path $iconDir -ErrorAction SilentlyContinue) -and $iconDir -notmatch 'Windows\\System') {
+                        $guessedPath = $iconDir
+                        $prog.RootSource = "Shortcut.IconLocation"
+                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Shortcut.IconLocation"
+                        Write-Un1Log -Category "LOCATE" -Message "Local found via Shortcut IconLocation: Dir=$iconDir" -Color Green
+                        # Não damos break aqui, porque um próximo atalho pode achar um Target .exe de verdade
+                    }
                 }
             }
         }
-        
+
         # ── PRIORIDADE 4: Shortcut Cache (DisplayIcon from Reg -> ExePath) ──
         if (!$guessedPath -and !$exeFromShortcut -and ![string]::IsNullOrWhiteSpace($prog.DisplayIcon)) {
             $cleanIcon = $prog.DisplayIcon -replace '\"', '' -replace ',\d+$', ''
@@ -1280,32 +1317,63 @@ function Get-Un1nst4ll3rDeepSize {
             Add-Un1nst4ll3rEvidenceValue -App $prog -Property "CleanupDirectoryTargets" -Value $guessedPath
             if ($prog.Status -eq "NoLocation") { $prog.Status = "OK" } 
             
-            if (![string]::IsNullOrWhiteSpace($exeFromShortcut)) {
+            # ======================================================================
+            # LÓGICA INTELIGENTE DE EXEPATH: Rejeita Updaters e força Heurística
+            # ======================================================================
+            $updaterPatterns = @('^Update\.exe$', '^Updater\.exe$', '^UpdateHelper\.exe$', '^ChromiumUpdater\.exe$')
+            $isUpdater = $false
+            
+            # Checa se o atalho OU o ExePath pré-existente é um updater
+            $candidateExe = if (![string]::IsNullOrWhiteSpace($exeFromShortcut)) { $exeFromShortcut } else { $prog.ExePath }
+            if (![string]::IsNullOrWhiteSpace($candidateExe)) {
+                $currentExeName = Split-Path $candidateExe -Leaf
+                foreach ($pattern in $updaterPatterns) { if ($currentExeName -match $pattern) { $isUpdater = $true; break } }
+            }
+            
+            # Se achamos um exe, mas ele é um Updater, NÃO o aceite. Force a heurística a rodar.
+            if (![string]::IsNullOrWhiteSpace($exeFromShortcut) -and !$isUpdater) {
                 $prog.ExePath = $exeFromShortcut
                 Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $exeFromShortcut
                 Write-Un1Log -Category "LOCATE" -Message "ExePath confirmed via Shortcut/MuiCache: $exeFromShortcut" -Color Green
-            } elseif (![string]::IsNullOrWhiteSpace($prog.ExePath)) {
-                # Já temos um ExePath (provavelmente do Orphan Finder), mantemos ele
+            } elseif (![string]::IsNullOrWhiteSpace($prog.ExePath) -and !$isUpdater) {
+                # Já temos um ExePath pré-preenchido e não é updater
                 Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $prog.ExePath
                 Write-Un1Log -Category "LOCATE" -Message "ExePath already resolved (pre-filled): $($prog.ExePath)" -Color DarkGray
             } else {
-                # Roda a heurística pesada só se não tiver NADA
+                # Roda a heurística pesada se não temos NADA, OU se o que achamos era um Updater
                 $uninstallExeName = if ($prog.UninstallString -match '\\([^\\]+\.exe)') { $Matches[1] } else { "" }
+                
+                # Se caiu aqui porque era um Updater, bota o updater na blacklist da heurística
+                if ($isUpdater) {
+                    $uninstallExeName = (Split-Path $exeFromShortcut -Leaf)
+                    Write-Un1Log -Category "LOCATE" -Message "Target is an Updater ($uninstallExeName). Forcing Exe Heuristic to find the real app." -Color Yellow
+                }
+
                 $foundExe = Find-Un1nst4ll3rMainExe -Path $guessedPath -AppName $prog.Nome -UninstallExeName $uninstallExeName
-                # ... resto do código do running process ...
-                $prog.ExePath = $foundExe
-                Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $foundExe
+                
                 if (![string]::IsNullOrWhiteSpace($foundExe)) {
-                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Exe.Heuristic"
+                    $prog.ExePath = $foundExe
+                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $foundExe
+                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Exe.Heuristic.Override"
+                } elseif ($isUpdater) {
+                    # Heurística falhou em achar o app real (pasta estranha?), fallback para o Updater
+                    $prog.ExePath = $exeFromShortcut
+                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $exeFromShortcut
+                } else {
+                    $prog.ExePath = $foundExe
+                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $foundExe
+                    if (![string]::IsNullOrWhiteSpace($foundExe)) {
+                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Exe.Heuristic"
+                    }
                 }
             }
-        } else {
+        } 
+        else {
             $prog.Status = "NoLocation"
             Write-Un1Log -Category "LOCATE" -Message "Location not found for $($prog.Nome)." -Color Red
         }
 
-        $updatedList.Add($prog) | Out-Null
-    }
+        $updatedList.Add($prog) | Out-Null    }
 
     Write-Un1Log -Category "LOCATE" -Message "Deep location discovery complete." -Color Green
     return $updatedList
