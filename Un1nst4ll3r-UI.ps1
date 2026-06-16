@@ -70,6 +70,7 @@ if (Test-Path $markdigDll) {
 # ==========================================
 # 5. Multi-Language System Setup
 # ==========================================
+$script:LangFullObject = $langObj 
 $script:langPath = Join-Path $AppRoot "Un1nst4ll3r_Lang.json"
 $script:CurrentLang = "pt-BR"
 $script:LangData = $null
@@ -1241,8 +1242,9 @@ $btnDeepScan.Add_Click({
         }
 
         Update-Un1nst4ll3rSpinner -Message "Limpando vestígios e registros..."
-        $cleanedCount = Remove-Un1nst4ll3rTraces -App $AppData
-
+        # Passa o cache completo para o motor verificar pastas compartilhadas (Shared Roots)
+        $cleanedCount = Remove-Un1nst4ll3rTraces -App $AppData -InstalledApps $cacheData
+        
         Update-Un1nst4ll3rSpinner -Message "Atualizando lista de aplicativos..."
         $statusLabel.Text = $script:LangData.StatusRefreshingCache
         $updatedCache = Remove-Un1nst4ll3rJsonAppRecord -CacheData $cacheData -GridRow $dataGridView.CurrentRow
@@ -1309,21 +1311,18 @@ $btnViewLog.Add_Click({
 # --- Language Swap Triggers ---
 $btnLangPT.Add_Click({
     $script:CurrentLang = "pt-BR"
-    $langObj = ConvertFrom-Json (Get-Content $script:langPath -Raw -Encoding UTF8)
-    $script:LangData = $langObj.$script:CurrentLang
+    $script:LangData = $script:LangFullObject.$script:CurrentLang
     Update-UILanguage
 })
 
 $btnLangEN.Add_Click({
     $script:CurrentLang = "en-US"
-    $langObj = ConvertFrom-Json (Get-Content $script:langPath -Raw -Encoding UTF8)
     $script:LangData = $langObj.$script:CurrentLang
     Update-UILanguage
 })
 
 $btnLangES.Add_Click({
     $script:CurrentLang = "es-ES"
-    $langObj = ConvertFrom-Json (Get-Content $script:langPath -Raw -Encoding UTF8)
     $script:LangData = $langObj.$script:CurrentLang
     Update-UILanguage
 })
