@@ -1,4 +1,4 @@
-# 🛠️ Un1nst4ll3r - Pro Edition v2.2  
+# 🛠️ Un1nst4ll3r
 ### 🚀 High-Performance System Analysis & App Decompression Engine  
 
 **Un1nst4ll3r** is a next-generation PowerShell-based maintenance utility designed to hunt down installed applications and their "ghost" traces. Unlike standard uninstallers, it utilizes deep-level heuristics to map the filesystem and registry.
