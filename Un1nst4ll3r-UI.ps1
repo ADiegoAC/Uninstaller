@@ -59,19 +59,44 @@ if (Test-Path $corePath) {
     exit
 }
 
-# Load Markdown Viewer Library if present
- $markdigDll = Join-Path $AppRoot "Markdig.dll"
+# ==========================================
+# Conversor de Markdown para HTML (Puro PowerShell - 100% compatível com PS2EXE)
+# ==========================================
+function Convert-MarkdownToHtml {
+    param ([string]$Markdown)
 
-if (Test-Path $markdigDll) {
-    try {
-        Unblock-File -Path $markdigDll -ErrorAction SilentlyContinue
-        Add-Type -Path $markdigDll
-        Write-Un1Log -Category "INIT" -Message "Markdig library loaded successfully." -Color Green
-    } catch {
-        Write-Un1Log -Category "INIT" -Message "Markdig library failed to load: $($_.Exception.Message)" -Color Red
-    }
-} else {
-    Write-Un1Log -Category "INIT" -Message "Markdig.dll not found. Help will display raw text." -Color Yellow
+    # 1. Escapa tags HTML existentes no texto para não quebrar a página
+    $html = $Markdown -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;'
+    
+    # 2. Blocos de Código (``` ... ```)
+    $html = [regex]::Replace($html, '```\r?\n?([\s\S]*?)```', { param($m) 
+        return "<pre><code>$($m.Groups[1].Value.Trim())</code></pre>"
+    })
+    
+    # 3. Cabeçalhos (#, ##, ###)
+    $html = $html -replace '(?m)^### (.*)$', '<h3>$1</h3>'
+    $html = $html -replace '(?m)^## (.*)$', '<h2>$1</h2>'
+    $html = $html -replace '(?m)^# (.*)$', '<h1>$1</h1>'
+    
+    # 4. Negrito e Itálico
+    $html = $html -replace '\*\*(.*?)\*\*', '<strong>$1</strong>'
+    $html = $html -replace '\*(.*?)\*', '<em>$1</em>'
+    
+    # 5. Código Inline (`codigo`)
+    $html = $html -replace '`(.+?)`', '<code>$1</code>'
+    
+    # 6. Links [texto](url)
+    $html = $html -replace '\[(.*?)\]\((.*?)\)', '<a href="$2" target="_blank">$1</a>'
+    
+    # 7. Listas (- item ou * item)
+    $html = $html -replace '(?m)^[\-\*] (.*)$', '<li>$1</li>'
+    $html = [regex]::Replace($html, '(<li>.*?<\/li>\r?\n?)+', { param($m) return "<ul>$($m.Value)</ul>" })
+    
+    # 8. Parágrafos e Quebras de linha
+    $html = $html -replace "`r`n`r`n", "</p><p>"
+    $html = $html -replace "`r`n", "<br>"
+    
+    return "<p>$html</p>"
 }
 
 # ==========================================
@@ -1610,23 +1635,12 @@ $btnLangES.Add_Click({
     $mdText = Get-Content -Path $readmePath -Raw -Encoding UTF8
     $htmlBody = ""
 
-    # Verifica se o Markdig (que já carregou na Seção 4) está disponível
-    $markdigAssembly = [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.FullName -match "Markdig" } | Select-Object -First 1
+    # Lê o Markdown como texto puro
+    $mdText = Get-Content -Path $readmePath -Raw -Encoding UTF8
     
-    if ($markdigAssembly) {
-        try {
-            # Converte Markdown para HTML usando o Markdig
-            $markdownType = $markdigAssembly.GetType("Markdig.Markdown")
-            $htmlBody = $markdownType::ToHtml($mdText)
-        } catch {
-            # Fallback caso o Markdig falhe
-            $htmlBody = "<pre style='white-space: pre-wrap;'>$mdText</pre>"
-        }
-    } else {
-        # Fallback se o Markdig não tiver carregado
-        $htmlBody = "<pre style='white-space: pre-wrap;'>$mdText</pre>"
-    }
-
+    # Converte usando nossa função 100% PowerShell (Sem DLLs!)
+    $htmlBody = Convert-MarkdownToHtml -Markdown $mdText
+        
     # Cria o WebBrowser para exibir o HTML
     $contentBox = New-Object System.Windows.Forms.WebBrowser
     $contentBox.Dock = "Fill"

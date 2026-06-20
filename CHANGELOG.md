@@ -2,7 +2,7 @@
 
 > Cada grupo (**Motor**, **UI**, **Integração**) evolui com seu próprio versionamento independente. O número do título de cada bloco representa a timeline combinada do projeto; a tag `[Grupo - x.y.z]` indica a versão real daquele componente.
 
-**Versões atuais:** Motor de busca `3.3.0` · UI `2.0.0` · Integração `2.4.0` · RegSearch `0.2.0` · Motor de limpeza `0.2.0` · Arquitetura `0.4.0`
+**Versões atuais:** Motor de busca `3.3.0` · UI `2.0.0` · Integração `2.5.0` · RegSearch `0.2.0` · Motor de limpeza `0.2.0` · Arquitetura `0.4.0`
 
 ---
 
@@ -124,3 +124,7 @@
   - **IPC (Inter-Process Communication):** A busca profunda de registro foi externalizada para o script `RegSearch.ps1`, rodando em um processo PowerShell isolado invisível. Isso zera o travamento da UI durante a varredura do registro.
   - **Integração JSON:** Criado parâmetro `-ExportJson` no `RegSearch.ps1` que suprime `Write-Host` e `Write-Progress`, cuspirindo JSON puro e comprimido para o buffer do App.
 - **[RegSearch - 0.2.0]** Otimização de Performance: Parâmetro `-Skip` adicionado por padrão para ignorar as subárvores `Classes` e `WOW6432Node` do registro, acelerando a varredura em mais de 90% sem perder vestígios críticos de software.
+
+## [2.5.0] Autossuficiência e Renderização Nativa
+- **[UI - Ajuda]** Substituição da dependência externa `Markdig.dll` por um conversor de Markdown para HTML nativo em PowerShell (`Convert-MarkdownToHtml`), utilizando expressões regulares para formatar títulos, listas, blocos de código e ênfases.
+- **[Build - PS2EXE]** Resolução de travamento e falha de renderização no botão de Ajuda quando compilado com PS2EXE. O aplicativo final é agora 100% *standalone* (não requer DLLs externas na pasta de distribuição).
