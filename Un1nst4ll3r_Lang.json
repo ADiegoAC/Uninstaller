@@ -1,11 +1,11 @@
-﻿{
+{
   "pt-BR": {
     "Title": "Un1nst4ll3r",
-    "Version": "v2.5.0 | Scanner de Programas Instalados",
+    "Version": "v2.6.0 | Scanner de Programas Instalados",
     "BtnScanList": "LISTAR SCAN",
     "BtnNewScan": "NOVO SCAN",
     "BtnUninstall": "DESINSTALAR",
-    "BtnCleanTraces": "LIMPAR VESTÍGIOS",
+    "BtnCleanTraces": "FORÇAR DESINSTALAÇÃO",
     "BtnViewLog": "VER LOG",
     "BtnHelp": "AJUDA",
     "BtnAbout": "SOBRE",
@@ -72,11 +72,11 @@
   },
   "en-US": {
     "Title": "Un1nst4ll3r",
-    "Version": "v2.5.0 | Installed Programs Scanner",
+    "Version": "v2.6.0 | Installed Programs Scanner",
     "BtnScanList": "SCAN LIST",
     "BtnNewScan": "NEW SCAN",
     "BtnUninstall": "UNINSTALL",
-    "BtnCleanTraces": "CLEAN TRACES",
+    "BtnCleanTraces": "FORCE UNINSTALL",
     "BtnViewLog": "VIEW LOG",
     "BtnHelp": "HELP",
     "BtnAbout": "ABOUT",
@@ -143,11 +143,11 @@
   },
   "es-ES": {
     "Title": "Un1nst4ll3r",
-    "Version": "v2.5.0 | Escáner de Programas Instalados",
+    "Version": "v2.6.0 | Escáner de Programas Instalados",
     "BtnScanList": "LISTAR ESCANEO",
     "BtnNewScan": "NUEVO ESCANEO",
     "BtnUninstall": "DESINSTALAR",
-    "BtnCleanTraces": "LIMPIAR RASTROS",
+    "BtnCleanTraces": "FORZAR DESINSTALACIÓN",
     "BtnViewLog": "VER LOG",
     "BtnHelp": "AYUDA",
     "BtnAbout": "ACERCA DE",
