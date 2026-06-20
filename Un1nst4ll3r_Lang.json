@@ -1,7 +1,7 @@
 ﻿{
   "pt-BR": {
     "Title": "Un1nst4ll3r",
-    "Version": "v2.2.0 | Scanner de Programas Instalados",
+    "Version": "v2.4.0 | Scanner de Programas Instalados",
     "BtnScanList": "LISTAR SCAN",
     "BtnNewScan": "NOVO SCAN",
     "BtnUninstall": "DESINSTALAR",
@@ -57,11 +57,22 @@
     "UpdateSuccess": "Instalação concluída! Reiniciando o aplicativo...",
     "UpdateFailed": "Falha na instalação. Por favor, instale o PowerShell 7 manualmente.",
     "UpdateWingetNotFound": "O Winget não foi encontrado neste sistema. Por favor, instale o PowerShell 7 manualmente.",
-    "MenuOpenFolder": "Abrir Pasta de Instalação"
+    "MenuOpenFolder": "Abrir Pasta de Instalação",
+    "BtnConfirmClean": "LIMPAR VESTÍGIOS SELECIONADOS",
+    "TraceColType": "Tipo",
+    "TraceColPath": "Caminho do Vestígio",
+    "TraceColStatus": "Status",
+    "StatusSelectTracesToClean": "Selecione os vestígios de '{0}' e clique em Limpar.",
+    "BtnOk": "OK",
+    "BtnCancel": "CANCELAR",
+    "ErrorDuringScan": "Erro durante a varredura.",
+    "UninstallFailedWarning": "O desinstalador falhou.",
+    "DocumentationTitle": "Un1nst4ll3r - Documentação",
+    "AboutInfoText": "Um scanner e desinstalador de alto desempenho.`nDescoberta profunda de órfãos e rastros legados."
   },
   "en-US": {
     "Title": "Un1nst4ll3r",
-    "Version": "v2.2.0 | Installed Programs Scanner",
+    "Version": "v2.4.0 | Installed Programs Scanner",
     "BtnScanList": "SCAN LIST",
     "BtnNewScan": "NEW SCAN",
     "BtnUninstall": "UNINSTALL",
@@ -117,11 +128,22 @@
     "UpdateSuccess": "Installation complete! Restarting application...",
     "UpdateFailed": "Installation failed. Please install PowerShell 7 manually.",
     "UpdateWingetNotFound": "Winget was not found on this system. Please install PowerShell 7 manually.",
-    "MenuOpenFolder": "Open Installation Folder"
+    "MenuOpenFolder": "Open Installation Folder",
+    "BtnConfirmClean": "CLEAN SELECTED TRACES",
+    "TraceColType": "Type",
+    "TraceColPath": "Trace Path",
+    "TraceColStatus": "Status",
+    "StatusSelectTracesToClean": "Select traces for '{0}' and click Clean.",
+    "BtnOk": "OK",
+    "BtnCancel": "CANCEL",
+    "ErrorDuringScan": "Error during scan.",
+    "UninstallFailedWarning": "The uninstaller failed.",
+    "DocumentationTitle": "Un1nst4ll3r - Documentation",
+    "AboutInfoText": "A high-performance system scanner and uninstaller.`nDeep discovery of orphans and legacy traces."
   },
   "es-ES": {
     "Title": "Un1nst4ll3r",
-    "Version": "v2.2.0 | Escáner de Programas Instalados",
+    "Version": "v2.4.0 | Escáner de Programas Instalados",
     "BtnScanList": "LISTAR ESCANEO",
     "BtnNewScan": "NUEVO ESCANEO",
     "BtnUninstall": "DESINSTALAR",
@@ -177,6 +199,17 @@
     "UpdateSuccess": "¡Instalación completada! Reiniciando la aplicación...",
     "UpdateFailed": "Fallo en la instalación. Por favor, instale PowerShell 7 manualmente.",
     "UpdateWingetNotFound": "No se encontró Winget en este sistema. Por favor, instale PowerShell 7 manualmente.",
-    "MenuOpenFolder": "Abrir Carpeta de Instalación"
+    "MenuOpenFolder": "Abrir Carpeta de Instalación",
+    "BtnConfirmClean": "LIMPIAR RASTROS SELECCIONADOS",
+    "TraceColType": "Tipo",
+    "TraceColPath": "Ruta del Rastro",
+    "TraceColStatus": "Estado",
+    "StatusSelectTracesToClean": "Seleccione los rastros de '{0}' y haga clic en Limpiar.",
+    "BtnOk": "OK",
+    "BtnCancel": "CANCELAR",
+    "ErrorDuringScan": "Error durante el escaneo.",
+    "UninstallFailedWarning": "El desinstalador falló.",
+    "DocumentationTitle": "Un1nst4ll3r - Documentación",
+    "AboutInfoText": "Un escáner y desinstalador del sistema de alto rendimiento.`nDescubrimiento profundo de huérfanos y rastros heredados."
   }
 }

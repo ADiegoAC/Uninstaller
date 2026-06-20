@@ -45,10 +45,17 @@ Add-Type -AssemblyName System.Drawing
 # 4. Import the Un1nst4ll3r Engine
 # ==========================================
 $enginePath = Join-Path $AppRoot "Un1nst4ll3r.ps1"
+$corePath = Join-Path $AppRoot "Un1nst4ll3r-core.ps1"
 if (Test-Path $enginePath) {
     . $enginePath
 } else {
     [System.Windows.Forms.MessageBox]::Show("Engine Un1nst4ll3r.ps1 not found in $AppRoot!", "Critical Error", "OK", "Error")
+    exit
+}
+if (Test-Path $corePath) { 
+    . $corePath 
+} else {
+        [System.Windows.Forms.MessageBox]::Show("Engine Un1nst4ll3r-core.ps1 not found in $AppRoot!", "Critical Error", "OK", "Error")
     exit
 }
 
@@ -134,7 +141,7 @@ function Test-AndInstallPowerShell7 {
     $promptLabel.Location = New-Object System.Drawing.Point(20, 20)
 
     $btnYes = New-Object System.Windows.Forms.Button
-    $btnYes.Text = "OK"
+    $btnYes.Text = $L.BtnOk
     $btnYes.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
     $btnYes.BackColor = [System.Drawing.Color]::FromArgb(0, 191, 255)
     $btnYes.ForeColor = [System.Drawing.Color]::Black
@@ -144,7 +151,7 @@ function Test-AndInstallPowerShell7 {
     $btnYes.DialogResult = [System.Windows.Forms.DialogResult]::Yes
 
     $btnNo = New-Object System.Windows.Forms.Button
-    $btnNo.Text = "CANCEL"
+    $btnNo.Text = $L.BtnCancel
     $btnNo.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
     $btnNo.BackColor = [System.Drawing.Color]::FromArgb(80, 80, 80)
     $btnNo.ForeColor = [System.Drawing.Color]::White
@@ -387,10 +394,7 @@ function Get-Un1nst4ll3rAppIcon {
     # Strategy 1: DisplayIcon do Registro ou Ícone dos Atalhos (Ordenado por prioridade)
     if (![string]::IsNullOrWhiteSpace($IconPath)) {
         $bmp = Test-ExtractIcon $IconPath
-        if ($bmp) { 
-            Write-Un1Log -Category "ICON" -Message "S1 Icon found [DisplayIcon]." -Color Brown
-            return $bmp 
-        }
+        if ($bmp) { return $bmp }
     }
 
     # Strategy 2: Attempt to pull icon from matched memory shortcuts
@@ -407,19 +411,13 @@ function Get-Un1nst4ll3rAppIcon {
                 # PRIORIDADE A: O atalho tem um ícone customizado definido? (Ex: app.ico,0)
                 if (![string]::IsNullOrWhiteSpace($lnkMatch.IconLocation)) {
                     $bmp = Test-ExtractIcon $lnkMatch.IconLocation
-                    if ($bmp) { 
-                        Write-Un1Log -Category "ICON" -Message "S2 Icon found[Shortcut IconLocation]." -Color Brown
-                        return $bmp 
-                    }
+                    if ($bmp) { return $bmp }
                 }
                 
                 # PRIORIDADE B: Se não achou no IconLocation, tenta extrair do Target (o .exe)
                 if (![string]::IsNullOrWhiteSpace($lnkMatch.Target) -and (Test-Path $lnkMatch.Target -ErrorAction SilentlyContinue)) {
                     $bmp = Test-ExtractIcon $lnkMatch.Target
-                    if ($bmp) { 
-                        Write-Un1Log -Category "ICON" -Message "S2 Icon found[Shortcut Target]." -Color Brown
-                        return $bmp 
-                    }
+                    if ($bmp) { return $bmp }
                 }
             }
         }
@@ -431,10 +429,7 @@ function Get-Un1nst4ll3rAppIcon {
             if (![string]::IsNullOrWhiteSpace($scIcon)) {
                 # O Test-ExtractIcon já cuida de limpar o ",0" ou as aspas automaticamente!
                 $bmp = Test-ExtractIcon $scIcon
-                if ($bmp) { 
-                    Write-Un1Log -Category "ICON" -Message "S3 Icon found [ShortcutIconLocation]." -Color Brown
-                    return $bmp 
-                }
+                if ($bmp) { return $bmp }
             }
         }
     }
@@ -446,9 +441,7 @@ function Get-Un1nst4ll3rAppIcon {
                 if ($AppName -match $rule.Pattern) {
                     $expandedIconPath = [System.Environment]::ExpandEnvironmentVariables($rule.IconPath)
                     $bmp = Test-ExtractIcon $expandedIconPath
-                    if ($bmp) { 
-                        Write-Un1Log -Category "ICON" -Message "S4 Icon found[Package Bank]. Icon: $($bmp)" -Color Brown
-                        return $bmp }
+                    if ($bmp) { return $bmp }
                 }
             } catch {}
         }
@@ -479,9 +472,7 @@ function Get-Un1nst4ll3rAppIcon {
             if ($iconFile) {
                 # Tenta o método convencional primeiro (funciona se for .exe ou .ico)
                 $bmp = Test-ExtractIcon $iconFile.FullName
-                if ($bmp) { 
-                    Write-Un1Log -Category "ICON" -Message "S5 Icon found[Installer-ext]. Icon: $($bmp)" -Color Brown
-                    return $bmp }
+                if ($bmp) { return $bmp }
 
                 # TRUQUE PARA ARQUIVOS SEM EXTENSÃO:
                 # O método ExtractAssociatedIcon falha sem extensão. Se falhou, tentamos 
@@ -490,9 +481,7 @@ function Get-Un1nst4ll3rAppIcon {
                     $rawIcon = New-Object System.Drawing.Icon($iconFile.FullName)
                     $bmp = $rawIcon.ToBitmap()
                     $rawIcon.Dispose()
-                    if ($bmp) { 
-                    Write-Un1Log -Category "ICON" -Message "S5 Icon found[Installer-noExt]. Icon: $($bmp)" -Color Brown
-                        return $bmp }
+                    if ($bmp) { return $bmp }
                 } catch {
                     # Se der erro, o arquivo não é um ícone válido, ignoramos.
                 }
@@ -518,9 +507,7 @@ function Get-Un1nst4ll3rAppIcon {
                 $mainIco = $rootIcos | Where-Object { $_.BaseName -like "*$safeAppName*" } | Select-Object -First 1
                 if (!$mainIco) { $mainIco = $rootIcos | Select-Object -First 1 }
                 $bmp = Test-ExtractIcon $mainIco.FullName
-                if ($bmp) { 
-                    Write-Un1Log -Category "ICON" -Message "S6 Icon found[ExePath]. Icon: $($bmp)" -Color Brown
-                    return $bmp }
+                if ($bmp) { return $bmp }
             }
         }
         
@@ -543,9 +530,7 @@ function Get-Un1nst4ll3rAppIcon {
             $mainIco = $validIcos | Where-Object { $_.BaseName -like "*$safeAppName*" } | Select-Object -First 1
             if (!$mainIco) { $mainIco = $validIcos | Select-Object -First 1 }
             $bmp = Test-ExtractIcon $mainIco.FullName
-            if ($bmp) { 
-                Write-Un1Log -Category "ICON" -Message "S7 Icon found[ICO File]. Icon: $($bmp)" -Color Brown
-                return $bmp }
+            if ($bmp) { return $bmp }
         }
     }
     
@@ -876,6 +861,127 @@ $dataGridView.Add_ColumnHeaderMouseClick({
     }
 })
 
+# ============================================================================
+# PAINEL DE LIMPEZA DE VESTÍGIOS (ListView Docked Fill)
+# ============================================================================
+ $tracePanel = New-Object System.Windows.Forms.Panel
+ $tracePanel.Dock = "Fill"
+ $tracePanel.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
+ $tracePanel.Visible = $false # Fica escondido por padrão
+
+# Rodapé do Painel de Limpeza
+ $traceFooterPanel = New-Object System.Windows.Forms.Panel
+ $traceFooterPanel.Dock = "Bottom"
+ $traceFooterPanel.Height = 50
+ $traceFooterPanel.BackColor = [System.Drawing.Color]::FromArgb(10, 20, 30)
+ $traceFooterPanel.Padding = New-Object System.Windows.Forms.Padding(10, 5, 10, 5)
+
+# Botão do Rodapé (Largura total do rodapé)
+ $btnConfirmClean = New-Object System.Windows.Forms.Button
+ $btnConfirmClean.Text = "LIMPAR VESTÍGIOS SELECIONADOS"
+ $btnConfirmClean.Font = New-Object System.Drawing.Font("Consolas", 11, [System.Drawing.FontStyle]::Bold)
+ $btnConfirmClean.BackColor = [System.Drawing.Color]::FromArgb(60, 140, 210)
+ $btnConfirmClean.ForeColor = [System.Drawing.Color]::Black
+ $btnConfirmClean.FlatStyle = "Flat"
+ $btnConfirmClean.Dock = "Fill"
+
+ $traceFooterPanel.Controls.Add($btnConfirmClean)
+
+# ============================================================================
+# PAINEL DE LIMPEZA DE VESTÍGIOS (ListView Docked Fill)
+# ============================================================================
+
+# Código C# para extrair ícones específicos de dentro do shell32.dll
+ $iconCode = @"
+using System;
+using System.Runtime.InteropServices;
+using System.Drawing;
+
+public class Un1IconExtractor {
+    [DllImport("shell32.dll", CharSet=CharSet.Auto)]
+    public static extern uint ExtractIconEx(string szFileName, int nIconIndex, out IntPtr phiconLarge, out IntPtr phiconSmall, uint nIcons);
+
+    public static Icon GetSmallShellIcon(int index) {
+        IntPtr hLarge, hSmall;
+        // Extrai 1 ícone na posição 'index' do shell32.dll
+        ExtractIconEx(Environment.SystemDirectory + "\\shell32.dll", index, out hLarge, out hSmall, 1);
+        
+        // Prioriza o ícone pequeno (16x16) para ficar perfeito na ListView
+        if (hSmall != IntPtr.Zero) {
+            return Icon.FromHandle(hSmall);
+        }
+        // Fallback para o grande se o pequeno falhar
+        if (hLarge != IntPtr.Zero) {
+            return Icon.FromHandle(hLarge);
+        }
+        return null;
+    }
+}
+"@
+
+# A CORREÇÃO ESTÁ AQUI: -ReferencedAssemblies System.Drawing
+Add-Type -TypeDefinition $iconCode -ReferencedAssemblies System.Drawing -ErrorAction SilentlyContinue
+
+# Cria a lista de imagens
+ $traceImageList = New-Object System.Windows.Forms.ImageList
+ $traceImageList.ImageSize = New-Object System.Drawing.Size(16, 16)
+ $traceImageList.ColorDepth = "Depth32Bit"
+
+# Índices reais dentro do shell32.dll:
+# Índice 4 = Pasta amarela padrão fechada
+# Índice 0 = Arquivo genérico branco
+ $folderIcon = [Un1IconExtractor]::GetSmallShellIcon(4)
+ $fileIcon = [Un1IconExtractor]::GetSmallShellIcon(0)
+ $regIcon = [System.Drawing.Icon]::ExtractAssociatedIcon("$env:windir\regedit.exe")
+
+if ($folderIcon) { $traceImageList.Images.Add($folderIcon) }
+if ($fileIcon) { $traceImageList.Images.Add($fileIcon) }
+if ($regIcon) { $traceImageList.Images.Add($regIcon) }
+
+# Criação do Painel
+ $tracePanel = New-Object System.Windows.Forms.Panel
+ $tracePanel.Dock = "Fill"
+ $tracePanel.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
+ $tracePanel.Visible = $false
+
+# Rodapé do Painel
+ $traceFooterPanel = New-Object System.Windows.Forms.Panel
+ $traceFooterPanel.Dock = "Bottom"
+ $traceFooterPanel.Height = 50
+ $traceFooterPanel.BackColor = [System.Drawing.Color]::FromArgb(10, 20, 30)
+ $traceFooterPanel.Padding = New-Object System.Windows.Forms.Padding(10, 5, 10, 5)
+
+ $btnConfirmClean = New-Object System.Windows.Forms.Button
+ $btnConfirmClean.Text = "LIMPAR VESTÍGIOS SELECIONADOS"
+ $btnConfirmClean.Font = New-Object System.Drawing.Font("Consolas", 11, [System.Drawing.FontStyle]::Bold)
+ $btnConfirmClean.BackColor = [System.Drawing.Color]::FromArgb(60, 140, 210)
+ $btnConfirmClean.ForeColor = [System.Drawing.Color]::Black
+ $btnConfirmClean.FlatStyle = "Flat"
+ $btnConfirmClean.Dock = "Fill"
+ $traceFooterPanel.Controls.Add($btnConfirmClean)
+
+# Configuração da ListView
+ $traceListView = New-Object System.Windows.Forms.ListView
+ $traceListView.Dock = "Fill"
+ $traceListView.CheckBoxes = $true
+ $traceListView.View = "Details"
+ $traceListView.BackColor = [System.Drawing.Color]::FromArgb(25, 25, 25)
+ $traceListView.ForeColor = [System.Drawing.Color]::White
+ $traceListView.Font = New-Object System.Drawing.Font("Consolas", 9)
+
+# VINCULA A LISTA DE IMAGENS AQUI
+ $traceListView.SmallImageList = $traceImageList
+
+$traceListView.Columns.Add($script:LangData.TraceColType, 80) | Out-Null
+$traceListView.Columns.Add($script:LangData.TraceColPath, 500) | Out-Null
+$traceListView.Columns.Add($script:LangData.TraceColStatus, 150) | Out-Null
+
+ $tracePanel.Controls.Add($traceListView)
+ $tracePanel.Controls.Add($traceFooterPanel)
+
+ $form.Controls.Add($tracePanel)
+ $tracePanel.BringToFront()
+
 # ==========================================
 # 13. Footer Panel
 # ==========================================
@@ -1013,7 +1119,7 @@ function Update-Grid {
         Load-GridFromJson -Path $script:jsonPath
     }    
     catch {
-        $statusLabel.Text = "Error during scan."
+        $statusLabel.Text = $L.ErrorDuringScan
         [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, "Error", "OK", "Error")
     }
     finally {
@@ -1197,28 +1303,23 @@ $btnDeepScan.Add_Click({
     Update-Grid
 })
 
+# --- Botão UNINSTALL (Modo Manual: Desinstala e mostra ListView) ---
  $btnUninstall.Add_Click({
     if ($null -eq $dataGridView.CurrentRow) { return }
 
     $cacheData = Get-Un1nst4ll3rJsonCacheData
     $AppData = Find-Un1nst4ll3rJsonAppRecord -CacheData $cacheData -GridRow $dataGridView.CurrentRow
-    if ($null -eq $AppData) {
-        $statusLabel.Text = $script:LangData.StatusCacheError
-        return
-    }
+    if ($null -eq $AppData) { return }
 
-    # Calcula a posição: Canto inferior DIREITO do form principal
-    # Largura do form menos a largura da janelinha do spinner (360) e uma margem (10)
+    # Extraído para variáveis para evitar o erro de 'op_Addition' no PS 5.1
     $spinnerPosX = $form.Location.X + $form.Width - 380 - 10
     $spinnerPosY = $form.Location.Y + $form.Height - 100 - 20 
     $spinnerPos = New-Object System.Drawing.Point($spinnerPosX, $spinnerPosY)
 
-    # Inicia o Spinner
     Start-Un1nst4ll3rSpinner -InitialMessage "Preparando desinstalação..." -Location $spinnerPos
 
     try {
         Update-Un1nst4ll3rSpinner -Message "Desinstalando $($AppData.Nome)..."
-        
         $params = @{
             AppName                   = $AppData.Nome
             UninstallStringValue      = $AppData.UninstallString
@@ -1230,37 +1331,195 @@ $btnDeepScan.Add_Click({
 
         if (!$UninstallResult) {
             $statusLabel.Text = $script:LangData.UninstallCancelled
-            return # O Finally abaixo vai fechar o Spinner
+            return
         }
 
         Update-Un1nst4ll3rSpinner -Message "Verificando vestígios..."
         $uninstallCompleted = Test-Un1nst4ll3rUninstallCompleted -App $AppData
         if (!$uninstallCompleted) {
             $statusLabel.Text = $script:LangData.StatusReady
-            [System.Windows.Forms.MessageBox]::Show(($script:LangData.MsgUninstallNotCompleted -f $AppData.Nome), $script:LangData.Title, "OK", "Warning")
+            [System.Windows.Forms.MessageBox]::Show("O desinstalador falhou ou foi cancelado.", "Aviso", "OK", "Warning")
             return
         }
 
-        Update-Un1nst4ll3rSpinner -Message "Limpando vestígios e registros..."
-        # Passa o cache completo para o motor verificar pastas compartilhadas (Shared Roots)
-        $cleanedCount = Remove-Un1nst4ll3rTraces -App $AppData -InstalledApps $cacheData
+        Update-Un1nst4ll3rSpinner -Message "Mapeando vestígios para aprovação..."
+        $Global:PendingCleanApp = $AppData
+        $Global:PendingCleanCache = $cacheData
         
-        Update-Un1nst4ll3rSpinner -Message "Atualizando lista de aplicativos..."
-        $statusLabel.Text = $script:LangData.StatusRefreshingCache
-        $updatedCache = Remove-Un1nst4ll3rJsonAppRecord -CacheData $cacheData -GridRow $dataGridView.CurrentRow
-        Save-Un1nst4ll3rJsonCacheData -Data $updatedCache
-        Load-GridFromJson -Path $script:jsonPath | Out-Null
-        
-        $statusLabel.Text = $script:LangData.StatusUninstallComplete -f $AppData.Nome, $cleanedCount
+        $traceTargets = Get-Un1nst4ll3rTraceTargets -App $AppData -InstalledApps $cacheData -AppRoot $AppRoot
+
+        # NOVO: Se não houver vestígios, atualiza o cache e volta direto para o Grid
+        if ($traceTargets.Count -eq 0) {
+            $statusLabel.Text = "$($AppData.Nome) foi desinstalado com sucesso. Nenhum vestígios deixado."
+            $updatedCache = Remove-Un1nst4ll3rJsonAppRecord -CacheData $cacheData -GridRow $dataGridView.CurrentRow
+            Save-Un1nst4ll3rJsonCacheData -Data $updatedCache
+            Load-GridFromJson -Path $script:jsonPath | Out-Null
+            return
+        }
+
+        # Popula a ListView
+        $traceListView.Items.Clear()
+        foreach ($target in $traceTargets) {
+            # Define o índice do ícone: 0 = Pasta, 1 = Arquivo, 2 = Registro
+            $imgIndex = 1 # Padrão para Atalho/Arquivo
+            if ($target.Type -eq "Pasta") { $imgIndex = 0 }
+            elseif ($target.Type -eq "Registro") { $imgIndex = 2 }
+            
+            $item = New-Object System.Windows.Forms.ListViewItem($target.Type, $imgIndex)
+            $item.SubItems.Add($target.Path)
+            $item.SubItems.Add($target.Reason)
+            $item.Checked = $target.Selected
+            $item.Tag = $target
+            
+            if ($target.Protected) {
+                $item.ForeColor = [System.Drawing.Color]::Gray
+                $item.BackColor = [System.Drawing.Color]::FromArgb(40, 20, 20)
+            }
+            $traceListView.Items.Add($item)
+        }
+
+        # Esconde o Grid e mostra o Painel de Limpeza
+        $dataGridView.Visible = $false
+        $tracePanel.Visible = $true
+        $tracePanel.BringToFront()
+        $statusLabel.Text = $script:LangData.StatusSelectTracesToClean -f $AppData.Nome
 
     } finally {
-        # Garante que o spinner feche, mesmo se der erro no meio
         Stop-Un1nst4ll3rSpinner
     }
 })
 
-$btnCleanTraces.Add_Click({
-    [System.Windows.Forms.MessageBox]::Show($script:LangData.MsgCleanFuture, "CLEAN TRACES", "OK", "Information")
+# --- Botão CLEAN TRACES (Agora é o FORCE UNINSTALL: Desinstala e Limpa Automático) ---
+ $btnCleanTraces.Add_Click({
+    if ($null -eq $dataGridView.CurrentRow) { return }
+
+    $cacheData = Get-Un1nst4ll3rJsonCacheData
+    $AppData = Find-Un1nst4ll3rJsonAppRecord -CacheData $cacheData -GridRow $dataGridView.CurrentRow
+    if ($null -eq $AppData) { return }
+
+    $spinnerPosX = $form.Location.X + $form.Width - 380 - 10
+    $spinnerPosY = $form.Location.Y + $form.Height - 100 - 20 
+    $spinnerPos = New-Object System.Drawing.Point($spinnerPosX, $spinnerPosY)
+
+    Start-Un1nst4ll3rSpinner -InitialMessage "FORCE UNINSTALL: $($AppData.Nome)" -Location $spinnerPos
+
+    try {
+        Update-Un1nst4ll3rSpinner -Message "Desinstalando..."
+        $params = @{
+            AppName                   = $AppData.Nome
+            UninstallStringValue      = $AppData.UninstallString
+            QuietUninstallStringValue = $AppData.QuietUninstallString
+            ProgramType               = $AppData.Tipo
+            AppIdentifier             = $AppData.Chave
+        }
+        $UninstallResult = Start-Un1nst4ll3rApp @params
+
+        if (!$UninstallResult) { return }
+
+        Update-Un1nst4ll3rSpinner -Message "Verificando remoção..."
+        $uninstallCompleted = Test-Un1nst4ll3rUninstallCompleted -App $AppData
+        if (!$uninstallCompleted) {
+            [System.Windows.Forms.MessageBox]::Show($L.UninstallFailedWarning, $L.WarningTitle, $L.BtnOk, "Warning")
+            return
+        }
+
+        Update-Un1nst4ll3rSpinner -Message "Mapeando e limpando vestígios automaticamente..."
+        $traceTargets = Get-Un1nst4ll3rTraceTargets -App $AppData -InstalledApps $cacheData -AppRoot $AppRoot        
+
+        # Popula a ListView
+        $traceListView.Items.Clear()
+        foreach ($target in $traceTargets) {
+            $imgIndex = 1
+            if ($target.Type -eq "Pasta") { $imgIndex = 0 }
+            elseif ($target.Type -eq "Registro") { $imgIndex = 2 }
+            
+            $item = New-Object System.Windows.Forms.ListViewItem($target.Type, $imgIndex)
+            $item.SubItems.Add($target.Path)
+            $item.SubItems.Add($target.Reason)
+            $item.Checked = $target.Selected
+            $item.Tag = $target
+            
+            if ($target.Protected) {
+                $item.ForeColor = [System.Drawing.Color]::Gray
+                $item.BackColor = [System.Drawing.Color]::FromArgb(40, 20, 20)
+            }
+            $traceListView.Items.Add($item)
+        }
+
+        # BLOQUEIA O BOTÃO MANUAL PARA EVITAR CLIQUES ACIDENTAIS DURANTE OS 2 SEGUNDOS
+        $btnConfirmClean.Enabled = $false
+        $btnConfirmClean.Text = "LIMPANDO AUTOMATICAMENTE..."
+
+        $dataGridView.Visible = $false
+        $tracePanel.Visible = $true
+        $tracePanel.BringToFront()
+        [System.Windows.Forms.Application]::DoEvents() # Força a UI desenhar a lista
+        Start-Sleep -Seconds 2 # Pausa de 2 seg para o user ler a lista
+
+        # Limpeza Automática
+        $selectedTargets = $traceTargets | Where-Object { -not $_.Protected }
+        $cleanedCount = Remove-Un1nst4ll3rTraces -Targets $selectedTargets
+        
+        $statusLabel.Text = $script:LangData.StatusUninstallComplete -f $AppData.Nome, $cleanedCount
+
+        # Atualiza Cache e Grid
+        $updatedCache = Remove-Un1nst4ll3rJsonAppRecord -CacheData $cacheData -GridRow $dataGridView.CurrentRow
+        Save-Un1nst4ll3rJsonCacheData -Data $updatedCache
+        Load-GridFromJson -Path $script:jsonPath | Out-Null
+        
+        # Volta para o Grid
+        $tracePanel.Visible = $false
+        $dataGridView.Visible = $true
+
+    } finally {
+        # RESTAURA O BOTÃO MANUAL PARA O PRÓXIMO USO
+        $btnConfirmClean.Enabled = $true
+        $btnConfirmClean.Text = $script:LangData.BtnConfirmClean
+        
+        Stop-Un1nst4ll3rSpinner
+    }
+})
+
+# --- Botão CONFIRM CLEAN (Botão grande no rodapé da ListView) ---
+ $btnConfirmClean.Add_Click({
+    if ($null -eq $Global:PendingCleanApp) { return }
+
+    # CORREÇÃO: Extrair as coordenadas para variáveis evita o erro de 'op_Addition' no PowerShell
+    $PosX = $form.Location.X + $form.Width - 380 - 10
+    $PosY = $form.Location.Y + $form.Height - 100 - 20 
+    $spinnerPos = New-Object System.Drawing.Point($posX, $posY)
+
+    Start-Un1nst4ll3rSpinner -InitialMessage "Limpando vestígios..." -Location $spinnerPos
+
+    try {
+        # Coleta apenas os itens marcados na ListView
+        $targetsToClean = @()
+        foreach ($item in $traceListView.Items) {
+            if ($item.Checked -and -not $item.Tag.Protected) {
+                $targetsToClean += $item.Tag
+            }
+        }
+
+        Update-Un1nst4ll3rSpinner -Message "Removendo $($targetsToClean.Count) itens..."
+        $cleanedCount = Remove-Un1nst4ll3rTraces -Targets $targetsToClean
+        
+        $statusLabel.Text = $script:LangData.StatusUninstallComplete -f $Global:PendingCleanApp.Nome, $cleanedCount
+
+        # Atualiza Cache e Grid
+        $updatedCache = Remove-Un1nst4ll3rJsonAppRecord -CacheData $Global:PendingCleanCache -GridRow $dataGridView.CurrentRow
+        Save-Un1nst4ll3rJsonCacheData -Data $updatedCache
+        Load-GridFromJson -Path $script:jsonPath | Out-Null
+        
+        # Volta para o Grid
+        $tracePanel.Visible = $false
+        $dataGridView.Visible = $true
+        
+        # Limpa as variáveis globais
+        $Global:PendingCleanApp = $null
+        $Global:PendingCleanCache = $null
+    } finally {
+        Stop-Un1nst4ll3rSpinner
+    }
 })
 
 $btnViewLog.Add_Click({
@@ -1341,7 +1600,7 @@ $btnLangES.Add_Click({
     }
 
     $helpForm = New-Object System.Windows.Forms.Form
-    $helpForm.Text = "Un1nst4ll3r - Documentation"
+    $helpForm.Text = $script:LangData.DocumentationTitle
     $helpForm.Size = New-Object System.Drawing.Size(800, 600)
     $helpForm.StartPosition = "CenterParent"
     $helpForm.BackColor = [System.Drawing.Color]::FromArgb(18, 18, 18)
@@ -1473,7 +1732,7 @@ $btnAbout.Add_Click({
     $lblVer.BackColor = [System.Drawing.Color]::Transparent
 
     $lblInfo = New-Object System.Windows.Forms.Label
-    $lblInfo.Text = "A high-performance system scanner and uninstaller.`nDeep discovery of orphans and legacy traces."
+    $lblInfo.Text = $script:LangData.AboutInfoText
     $lblInfo.Font = New-Object System.Drawing.Font("Consolas", 9)
     $lblInfo.ForeColor = [System.Drawing.Color]::LightGray
     $lblInfo.Location = New-Object System.Drawing.Point(30, 115)
@@ -1510,6 +1769,7 @@ $form.Add_Shown({
 # ==========================================
 $form.Controls.Add($logTextBox)
 $form.Controls.Add($dataGridView)
+$form.Controls.Add($tracePanel)
 $form.Controls.Add($actionsPanel)
 $form.Controls.Add($headerPanel)
 $form.Controls.Add($footerPanel)

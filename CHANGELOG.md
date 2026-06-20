@@ -107,3 +107,20 @@
 - **[Motor - 3.2.1]** Fix: Crash ao desinstalar apps MSI removendo o conflito de parâmetros `-NoNewWindow` e `-Verb RunAs` no `Start-Process`.
 - Fix: Falha silenciosa na desinstalação de apps ClickOnce (`dfshim.dll`). Removida a elevação de privilégios (`RunAs`) para este tipo de app, pois são instalados por usuário e não são visíveis no contexto de Administrador.
 - Feat: Interceptor dedicado para `rundll32.exe` antes do parser genérico, evitando quebra de argumentos por vírgulas e garantindo a execução correta.
+
+
+## [2.4.0] Modularização, Busca Profunda e Limpeza Auditorial
+- **[Arquitetura - 0.4.0]** Modularização do Core: Desmembramento do motor de ação (`Un1nst4ll3r-core.ps1`) do motor de busca (`Un1nst4ll3r.ps1`). O Core está 100% independente da UI e do Scanner, permitindo execução via terminal e manutenção isolada.
+- **[UI - 2.0.0]** Fluxo de Desinstalação Auditorial: Substituição da limpeza cega por uma `ListView` (`Dock=Fill`) interativa. 
+  - **Modo Manual (Botão Uninstall):** Desinstala o app e exibe a lista de vestígios com checkboxes. Itens protegidos ou compartilhados vêm dessmarcados e em cinza. O usuário audita e clica no botão "Limpar Vestígios" no rodapé da lista.
+  - **Modo Force-Uninstall (Botão Clean Traces):** Desinstala, mapeia, exibe a lista por 2 segundos para feedback visual e limpa automaticamente todos os vestígios não protegidos.
+- **[UI - Ícones Nativos]** Integração de ícones nativos do Windows na `ListView` de vestígios. Extração via API `ExtractAssociatedIcon` do `shell32.dll` (Índice 4 = Pasta, Índice 0 = Arquivo) e `regedit.exe` (Registro), garantindo identificação visual rápida sem depender de compilação C# inline (compatível com PS 5.1).
+- **[Motor - Limpeza - 3.3.0]** 
+  - **Elevação Direcionada:** Se a exclusão de uma pasta falhar por "Acesso Negado", o motor invoca um `cmd /c rmdir /s /q` silencioso com `-Verb RunAs` apenas para aquele diretório, evitando exigir privilégios de admin para o app inteiro.
+  - **Guarda-Chuva de Pastas Compartilhadas:** Bloqueia a exclusão de diretórios se outro aplicativo mapeado no cache estiver instalado dentro do mesmo caminho (evita apagar `C:\Editora\` se `AppB` também estiver lá).
+  - **AppData Guessing Seguro:** Deduz pastas residuais em `%APPDATA%` e `%PROGRAMDATA%`, mas bloqueia a adivinhação se o nome do app for de grandes editores (Microsoft, Google, Adobe, etc.) para evitar apagar pastas genéricas.
+- **[Motor - Busca Profunda - 2.0.0]** 
+  - **Sanitização de Nome:** Nova função `Get-Un1nst4ll3rSanitizedName` remove versões, parênteses e palavras de edição (Pro, Lite, x64) do nome do app antes de buscar vestígios profundos (ex: "WinRAR 7.22 (64-bit)" -> "WinRAR").
+  - **IPC (Inter-Process Communication):** A busca profunda de registro foi externalizada para o script `RegSearch.ps1`, rodando em um processo PowerShell isolado invisível. Isso zera o travamento da UI durante a varredura do registro.
+  - **Integração JSON:** Criado parâmetro `-ExportJson` no `RegSearch.ps1` que suprime `Write-Host` e `Write-Progress`, cuspirindo JSON puro e comprimido para o buffer do App.
+- **[RegSearch - 2.0.0]** Otimização de Performance: Parâmetro `-Skip` adicionado por padrão para ignorar as subárvores `Classes` e `WOW6432Node` do registro, acelerando a varredura em mais de 90% sem perder vestígios críticos de software.
