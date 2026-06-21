@@ -1,4 +1,4 @@
-# Changelog — Un1nst4ll3r
+﻿# Changelog — Un1nst4ll3r
 
 > Cada grupo (**Motor**, **UI**, **Integração**) evolui com seu próprio versionamento independente. O número do título de cada bloco representa a timeline combinada do projeto; a tag `[Grupo - x.y.z]` indica a versão real daquele componente.
 
@@ -128,3 +128,7 @@
 ## [2.5.0] Autossuficiência e Renderização Nativa
 - **[UI - Ajuda]** Substituição da dependência externa `Markdig.dll` por um conversor de Markdown para HTML nativo em PowerShell (`Convert-MarkdownToHtml`), utilizando expressões regulares para formatar títulos, listas, blocos de código e ênfases.
 - **[Build - PS2EXE]** Resolução de travamento e falha de renderização no botão de Ajuda quando compilado com PS2EXE. O aplicativo final é agora 100% *standalone* (não requer DLLs externas na pasta de distribuição).
+
+## [2.6.0] Busca de vestígios antigos
+- **[UI - 2.0.1]** Novo header com transição em degradê e revisão dos textos dos idiomas
+- **[Search traces engine - 0.1.0]** Novo motor de buscas standalone que busca por vestigios de desinstalações anteriores em pastas dos princiipais locais de instalação

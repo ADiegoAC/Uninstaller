@@ -1,4 +1,4 @@
-[
+﻿[
   {
     "Pattern": "Visual C\\+\\+ 2015-2022.*x64",
     "CheckPath": "%SystemRoot%\\System32\\vcruntime140.dll",

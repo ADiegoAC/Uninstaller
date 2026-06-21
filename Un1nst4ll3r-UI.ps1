@@ -1,4 +1,4 @@
-# ======================================================================
+﻿# ======================================================================
 #  Un1nst4ll3r - Graphical User Interface
 #  Version: 1.5.1
 # ======================================================================
@@ -47,6 +47,8 @@ Add-Type -AssemblyName System.Drawing
 # ==========================================
 $enginePath = Join-Path $AppRoot "Un1nst4ll3r.ps1"
 $corePath = Join-Path $AppRoot "Un1nst4ll3r-core.ps1"
+$searchtracesPath = Join-Path $AppRoot "Un1nst4ll3r-searchTraces.ps1"
+
 if (Test-Path $enginePath) {
     . $enginePath
 }
@@ -54,11 +56,20 @@ else {
     [System.Windows.Forms.MessageBox]::Show("Engine Un1nst4ll3r.ps1 not found in $AppRoot!", "Critical Error", "OK", "Error")
     exit
 }
+
 if (Test-Path $corePath) { 
     . $corePath 
 }
 else {
     [System.Windows.Forms.MessageBox]::Show("Engine Un1nst4ll3r-core.ps1 not found in $AppRoot!", "Critical Error", "OK", "Error")
+    exit
+}
+
+if (Test-Path $searchtracesPath) { 
+    . $searchtracesPath 
+}
+else {
+    [System.Windows.Forms.MessageBox]::Show("Engine Un1nst4ll3r-searchTraces.ps1 not found in $AppRoot!", "Critical Error", "OK", "Error")
     exit
 }
 
@@ -694,15 +705,15 @@ $actionsPanel.Height = 65
 $actionsPanel.BackColor = [System.Drawing.Color]::FromArgb(10, 20, 30)
 $actionsPanel.Padding = New-Object System.Windows.Forms.Padding(10, 5, 10, 5)
 
-        $actionsPanel.Add_Paint({
-                param($sender, $e)
-                $rect = $sender.ClientRectangle
-                $color1 = [System.Drawing.Color]::FromArgb(20, 20, 20)
-                $color2 = [System.Drawing.Color]::FromArgb(10, 20, 40) # Subtle deep blue-gray fade
-                $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect, $color1, $color2, [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
-                $e.Graphics.FillRectangle($brush, $rect)
-                $brush.Dispose()
-            })
+$actionsPanel.Add_Paint({
+        param($sender, $e)
+        $rect = $sender.ClientRectangle
+        $color1 = [System.Drawing.Color]::FromArgb(20, 20, 20)
+        $color2 = [System.Drawing.Color]::FromArgb(10, 20, 40) # Subtle deep blue-gray fade
+        $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect, $color1, $color2, [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
+        $e.Graphics.FillRectangle($brush, $rect)
+        $brush.Dispose()
+    })
 
 
 # --- Primary Buttons (Blue Gradients, Black Text) ---
@@ -733,14 +744,14 @@ $btnUninstall.FlatStyle = "Flat"
 $btnUninstall.Size = New-Object System.Drawing.Size(100, 35)
 $btnUninstall.Location = New-Object System.Drawing.Point(230, 15)
 
-$btnCleanTraces = New-Object System.Windows.Forms.Button
-$btnCleanTraces.Text = $script:LangData.BtnCleanTraces
-$btnCleanTraces.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
-$btnCleanTraces.BackColor = [System.Drawing.Color]::FromArgb(60, 140, 210)
-$btnCleanTraces.ForeColor = [System.Drawing.Color]::Black
-$btnCleanTraces.FlatStyle = "Flat"
-$btnCleanTraces.Size = New-Object System.Drawing.Size(100, 35)
-$btnCleanTraces.Location = New-Object System.Drawing.Point(340, 15)
+$btnSearchTraces = New-Object System.Windows.Forms.Button
+$btnSearchTraces.Text = $script:LangData.BtnCleanTraces
+$btnSearchTraces.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.FontStyle]::Bold)
+$btnSearchTraces.BackColor = [System.Drawing.Color]::FromArgb(60, 140, 210)
+$btnSearchTraces.ForeColor = [System.Drawing.Color]::Black
+$btnSearchTraces.FlatStyle = "Flat"
+$btnSearchTraces.Size = New-Object System.Drawing.Size(100, 35)
+$btnSearchTraces.Location = New-Object System.Drawing.Point(340, 15)
 
 $btnViewLog = New-Object System.Windows.Forms.Button
 $btnViewLog.Text = $script:LangData.BtnViewLog
@@ -782,7 +793,7 @@ $btnLangES.Size = New-Object System.Drawing.Size(30, 22)
 $btnLangES.Top = 38
 $btnLangES.Left = 0
 
-$actionsPanel.Controls.AddRange(@($btnScan, $btnDeepScan, $btnUninstall, $btnCleanTraces, $btnViewLog, $btnLangPT, $btnLangEN, $btnLangES))
+$actionsPanel.Controls.AddRange(@($btnScan, $btnDeepScan, $btnUninstall, $btnSearchTraces, $btnViewLog, $btnLangPT, $btnLangEN, $btnLangES))
 
 # ==========================================
 # 12. Main Content Area (Log Text Box)
@@ -981,14 +992,11 @@ public class Un1IconExtractor {
 
     public static Icon GetSmallShellIcon(int index) {
         IntPtr hLarge, hSmall;
-        // Extrai 1 ícone na posição 'index' do shell32.dll
         ExtractIconEx(Environment.SystemDirectory + "\\shell32.dll", index, out hLarge, out hSmall, 1);
         
-        // Prioriza o ícone pequeno (16x16) para ficar perfeito na ListView
         if (hSmall != IntPtr.Zero) {
             return Icon.FromHandle(hSmall);
         }
-        // Fallback para o grande se o pequeno falhar
         if (hLarge != IntPtr.Zero) {
             return Icon.FromHandle(hLarge);
         }
@@ -997,7 +1005,6 @@ public class Un1IconExtractor {
 }
 "@
 
-# A CORREÇÃO ESTÁ AQUI: -ReferencedAssemblies System.Drawing
 if (-not ("Un1IconExtractor" -as [type])) {
     Add-Type -TypeDefinition $iconCode -ReferencedAssemblies System.Drawing -ErrorAction Ignore
 }
@@ -1007,9 +1014,6 @@ $traceImageList = New-Object System.Windows.Forms.ImageList
 $traceImageList.ImageSize = New-Object System.Drawing.Size(16, 16)
 $traceImageList.ColorDepth = "Depth32Bit"
 
-# Índices reais dentro do shell32.dll:
-# Índice 4 = Pasta amarela padrão fechada
-# Índice 0 = Arquivo genérico branco
 $folderIcon = [Un1IconExtractor]::GetSmallShellIcon(4)
 $fileIcon = [Un1IconExtractor]::GetSmallShellIcon(0)
 $regIcon = [System.Drawing.Icon]::ExtractAssociatedIcon("$env:windir\regedit.exe")
@@ -1049,12 +1053,38 @@ $traceListView.BackColor = [System.Drawing.Color]::FromArgb(25, 25, 25)
 $traceListView.ForeColor = [System.Drawing.Color]::White
 $traceListView.Font = New-Object System.Drawing.Font("Consolas", 9)
 
-# VINCULA A LISTA DE IMAGENS AQUI
 $traceListView.SmallImageList = $traceImageList
 
-$traceListView.Columns.Add($script:LangData.TraceColType, 80) | Out-Null
-$traceListView.Columns.Add($script:LangData.TraceColPath, 500) | Out-Null
-$traceListView.Columns.Add($script:LangData.TraceColStatus, 150) | Out-Null
+$traceListView.Columns.Add($script:LangData.TraceColType, 130) | Out-Null
+$traceListView.Columns.Add($script:LangData.TraceColPath, 600) | Out-Null
+$traceListView.Columns.Add($script:LangData.TraceColStatus, 180) | Out-Null
+$traceListView.Columns.Add("Verificar", 100) | Out-Null
+
+# Evento de Clique (Abre a pasta se clicar no texto "Abrir Pasta")
+$traceListView.Add_MouseDown({
+        param($sender, $e)
+    
+        # Só processa se for o botão esquerdo do mouse
+        if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+            # Usa $sender em vez de $traceListView para evitar problemas de escopo
+            $hitTest = $sender.HitTest($e.X, $e.Y)
+        
+            if ($null -ne $hitTest.Item -and $null -ne $hitTest.SubItem) {
+                # Se o texto clicado for "Abrir Pasta"
+                if ($hitTest.SubItem.Text -eq "Abrir Pasta") {
+                    $path = $hitTest.Item.Tag
+                
+                    if (![string]::IsNullOrWhiteSpace($path) -and (Test-Path $path)) {
+                        # Abre a pasta no Windows Explorer
+                        Start-Process "explorer.exe" -ArgumentList "`"$path`""
+                    }
+                    else {
+                        [System.Windows.Forms.MessageBox]::Show("A pasta não existe mais ou o caminho é inválido.", "Aviso", 0, 48)
+                    }
+                }
+            }
+        }
+    })
 
 $tracePanel.Controls.Add($traceListView)
 $tracePanel.Controls.Add($traceFooterPanel)
@@ -1147,7 +1177,7 @@ function Update-UILanguage {
     $btnScan.Text = $L.BtnScanList
     $btnDeepScan.Text = $L.BtnNewScan
     $btnUninstall.Text = $L.BtnUninstall
-    $btnCleanTraces.Text = $L.BtnCleanTraces
+    $btnSearchTraces.Text = $L.BtnCleanTraces
     $btnViewLog.Text = $L.BtnViewLog
     $btnHelp.Text = $L.BtnHelp
     $btnAbout.Text = $L.BtnAbout
@@ -1388,6 +1418,8 @@ $btnDeepScan.Add_Click({
 $btnUninstall.Add_Click({
         if ($null -eq $dataGridView.CurrentRow) { return }
 
+        $script:tracesFrom = "Uninstall"
+
         $cacheData = Get-Un1nst4ll3rJsonCacheData
         $AppData = Find-Un1nst4ll3rJsonAppRecord -CacheData $cacheData -GridRow $dataGridView.CurrentRow
         if ($null -eq $AppData) { return }
@@ -1473,102 +1505,94 @@ $btnUninstall.Add_Click({
         }
     })
 
-# --- Botão CLEAN TRACES (Agora é o FORCE UNINSTALL: Desinstala e Limpa Automático) ---
-$btnCleanTraces.Add_Click({
-        if ($null -eq $dataGridView.CurrentRow) { return }
+# --- Botão SEARCH TRACES
+$btnSearchTraces.Add_Click({
+        $script:tracesFrom = "SearchTraces"
+        # Desabilita o botão e atualiza a UI
+        $btnSearchTraces.Enabled = $false
+        $traceListView.Items.Clear()
+        
+        # Esconde o Grid e mostra o Painel de Limpeza
+        $dataGridView.Visible = $false
+        $tracePanel.Visible = $true
+        $tracePanel.BringToFront()
 
-        $cacheData = Get-Un1nst4ll3rJsonCacheData
-        $AppData = Find-Un1nst4ll3rJsonAppRecord -CacheData $cacheData -GridRow $dataGridView.CurrentRow
-        if ($null -eq $AppData) { return }
-
-        $spinnerPosX = $form.Location.X + $form.Width - 380 - 10
-        $spinnerPosY = $form.Location.Y + $form.Height - 100 - 20 
-        $spinnerPos = New-Object System.Drawing.Point($spinnerPosX, $spinnerPosY)
-
-        Start-Un1nst4ll3rSpinner -InitialMessage ($script:LangData.SpinnerForceUninstall -f $AppData.Nome) -Location $spinnerPos
+        $traceListView.Items.Add("Varrendo diretórios em busca de vestígios. Aguarde...") | Out-Null
+        [System.Windows.Forms.Application]::DoEvents()
+        $traceListView.Items.Clear()
 
         try {
-            Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerUninstallingSimple)
-            $params = @{
-                AppName                   = $AppData.Nome
-                UninstallStringValue      = $AppData.UninstallString
-                QuietUninstallStringValue = $AppData.QuietUninstallString
-                ProgramType               = $AppData.Tipo
-                AppIdentifier             = $AppData.Chave
+            $resultados = Search-AppTraces
+
+            if (-not $resultados -or $resultados.Count -eq 0) {
+                $traceListView.Items.Add("Nenhum vestígio encontrado nas pastas comuns.") | Out-Null
             }
-            $UninstallResult = Start-Un1nst4ll3rApp @params
+            else {
+                # OTIMIZAÇÃO: Criar a fonte e a cor UMA VEZ fora do loop economiza memória
+                $linkFont = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Underline)
+                $linkColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
 
-            if (!$UninstallResult) { return }
+                foreach ($res in $resultados) {
+                    $item = New-Object System.Windows.Forms.ListViewItem($res.Type)
+                    $item.SubItems.Add($res.Path)
+                    $item.SubItems.Add($res.Status)
+                    $item.ImageIndex = $res.IconIndex
+                    $item.Tag = $res.Path
+                
+                    # ADICIONA O TEXTO "Abrir Pasta" NA NOVA COLUNA
+                    $linkSubItem = $item.SubItems.Add("Abrir Pasta")
+                
+                    # Faz o item usar estilos próprios por subitem
+                    $item.UseItemStyleForSubItems = $false
+                
+                    # Aplica a fonte e cor já criadas
+                    $linkSubItem.ForeColor = $linkColor
+                    $linkSubItem.Font = $linkFont
 
-            Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerVerifyingRemoval)
-            $uninstallCompleted = Wait-Un1nst4ll3rUninstallCompleted -App $AppData -TimeoutSeconds 60
-            if (!$uninstallCompleted) {
-                [System.Windows.Forms.MessageBox]::Show($L.UninstallFailedWarning, $L.WarningTitle, $L.BtnOk, "Warning")
-                return
-            }
-
-            Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerMappingAutoClean)
-            $traceTargets = Get-Un1nst4ll3rTraceTargets -App $AppData -InstalledApps $cacheData -AppRoot $AppRoot        
-
-            # Popula a ListView
-            $traceListView.Items.Clear()
-            foreach ($target in $traceTargets) {
-                $imgIndex = 1
-                if ($target.Type -eq "Pasta") { $imgIndex = 0 }
-                elseif ($target.Type -eq "Registro") { $imgIndex = 2 }
-            
-                $item = New-Object System.Windows.Forms.ListViewItem($target.Type, $imgIndex)
-                $item.SubItems.Add($target.Path)
-                $item.SubItems.Add($target.Reason)
-                $item.Checked = $target.Selected
-                $item.Tag = $target
-            
-                if ($target.Protected) {
-                    $item.ForeColor = [System.Drawing.Color]::Gray
-                    $item.BackColor = [System.Drawing.Color]::FromArgb(40, 20, 20)
+                    $traceListView.Items.Add($item)
+                    [System.Windows.Forms.Application]::DoEvents()
                 }
-                $traceListView.Items.Add($item)
             }
-
-            # BLOQUEIA O BOTÃO MANUAL PARA EVITAR CLIQUES ACIDENTAIS DURANTE OS 2 SEGUNDOS
-            $btnConfirmClean.Enabled = $false
-            $btnConfirmClean.Text = $script:LangData.SpinnerAutoCleaningStatus
-
-            $dataGridView.Visible = $false
-            $tracePanel.Visible = $true
-            $tracePanel.BringToFront()
-            [System.Windows.Forms.Application]::DoEvents() # Força a UI desenhar a lista
-            Start-Sleep -Seconds 2 # Pausa de 2 seg para o user ler a lista
-
-            # Limpeza Automática
-            $selectedTargets = $traceTargets | Where-Object { -not $_.Protected }
-            $cleanedCount = Remove-Un1nst4ll3rTraces -Targets $selectedTargets
-        
-            $statusLabel.Text = $script:LangData.StatusUninstallComplete -f $AppData.Nome, $cleanedCount
-
-            # Atualiza Cache e Grid
-            $updatedCache = Remove-Un1nst4ll3rJsonAppRecord -CacheData $cacheData -GridRow $dataGridView.CurrentRow
-            Save-Un1nst4ll3rJsonCacheData -Data $updatedCache
-            Load-GridFromJson -Path $script:jsonPath | Out-Null
-        
-            # Volta para o Grid
-            $tracePanel.Visible = $false
-            $dataGridView.Visible = $true
-
+        }
+        catch {
+            [System.Windows.Forms.MessageBox]::Show("Erro ao varrer vestígios: $($_.Exception.Message)", "Erro", 0, 16)
         }
         finally {
-            # RESTAURA O BOTÃO MANUAL PARA O PRÓXIMO USO
-            $btnConfirmClean.Enabled = $true
-            $btnConfirmClean.Text = $script:LangData.BtnConfirmClean
-        
-            Stop-Un1nst4ll3rSpinner
+            $btnSearchTraces.Enabled = $true
         }
     })
 
 # --- Botão CONFIRM CLEAN (Botão grande no rodapé da ListView) ---
 $btnConfirmClean.Add_Click({
-        if ($null -eq $Global:PendingCleanApp) { return }
 
+        if ($script:tracesFrom -eq "Uninstall") {
+            if ($null -eq $Global:PendingCleanApp) { return }
+        }
+
+        # 1. Coleta apenas os itens marcados na ListView ANTES de fazer qualquer coisa
+        $targetsToClean = @()
+        foreach ($item in $traceListView.Items) {
+            if ($item.Checked -and -not $item.Tag.Protected) {
+                $targetsToClean += $item.Tag
+            }
+        }
+
+        # 2. Se nenhum item for selecionado, avisa e sai
+        if ($targetsToClean.Count -eq 0) {
+            [System.Windows.Forms.MessageBox]::Show("Nenhum item foi selecionado.", "Aviso", 0, 48)
+            return
+        }
+
+        # 3. Se um item ou mais forem selecionados, pergunta se deve seguir
+        $mensagem = "Você selecionou $($targetsToClean.Count) item(ns). Deseja seguir com a exclusão dos itens selecionados?"
+        $resultado = [System.Windows.Forms.MessageBox]::Show($mensagem, "Confirmar Exclusão", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+
+        # 4. Se o usuário clicar em 'Não', sai sem fazer nada
+        if ($resultado -ne [System.Windows.Forms.DialogResult]::Yes) {
+            return
+        }
+
+        # 5. Se clicou em 'Sim', segue com o processo original
         # CORREÇÃO: Extrair as coordenadas para variáveis evita o erro de 'op_Addition' no PowerShell
         $PosX = $form.Location.X + $form.Width - 380 - 10
         $PosY = $form.Location.Y + $form.Height - 100 - 20 
@@ -1576,15 +1600,37 @@ $btnConfirmClean.Add_Click({
 
         Start-Un1nst4ll3rSpinner -InitialMessage ($script:LangData.SpinnerCleaningTraces) -Location $spinnerPos
 
-        try {
-            # Coleta apenas os itens marcados na ListView
-            $targetsToClean = @()
-            foreach ($item in $traceListView.Items) {
-                if ($item.Checked -and -not $item.Tag.Protected) {
-                    $targetsToClean += $item.Tag
+        if ($script:tracesFrom -eq "SearchTraces") {
+            try {
+                Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerRemovingItems -f $targetsToClean.Count)
+                $cleanedCount = Remove-FoundTraces -Targets $targetsToClean
+            }
+            finally {
+                Stop-Un1nst4ll3rSpinner
+                # Limpa os itens da ListView que foram alvo da exclusão
+                # O loop de trás pra frente ($i-- ou Count-1 até 0) é obrigatório para não quebrar o índice da lista
+                for ($i = $traceListView.Items.Count - 1; $i -ge 0; $i--) {
+                    $item = $traceListView.Items[$i]
+                    $caminho = $item.Tag
+                    
+                    if ($targetsToClean -contains $caminho) {
+                        # Se a pasta não existe mais, a exclusão deu certo e removemos da UI
+                        if (-not (Test-Path $caminho -ErrorAction SilentlyContinue)) {
+                            $traceListView.Items.Remove($item)
+                        }
+                        else {
+                            # Se ainda existe, houve falha na exclusão. Pintamos de vermelho para avisar o usuário.
+                            $item.UseItemStyleForSubItems = $true
+                            $item.ForeColor = [System.Drawing.Color]::Red
+                            $item.SubItems[2].Text = "Falha ao Excluir"
+                        }
+                    }
                 }
             }
+            return
+        }
 
+        try {
             Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerRemovingItems -f $targetsToClean.Count)
             $cleanedCount = Remove-Un1nst4ll3rTraces -Targets $targetsToClean
         
@@ -1637,9 +1683,9 @@ $btnViewLog.Add_Click({
                 $logTextBox.SelectionColor = $drawColor
                 $logTextBox.AppendText("$msg`r`n")
             }
-        
+            
             $logTextBox.ResumeLayout()
-        
+            
             # Scroll down automatically
             $logTextBox.SelectionStart = $logTextBox.Text.Length
             $logTextBox.ScrollToCaret()
@@ -1647,7 +1693,7 @@ $btnViewLog.Add_Click({
         else {
             $logTextBox.Text = $script:LangData.StatusNoLog
         }
-    
+        
         # Toggle View Layer: Hide DataGrid, Reveal RichTextBox Log
         $dataGridView.Visible = $false
         $logTextBox.Visible = $true
@@ -1661,7 +1707,7 @@ $btnLangPT.Add_Click({
         Save-LangDefault -NewDefaultLang "pt-BR"
         Update-UILanguage
     })
-
+                                
 $btnLangEN.Add_Click({
         $script:CurrentLang = "en-US"
         $script:LangData = $langObj.$script:CurrentLang
@@ -1700,9 +1746,6 @@ $btnHelp.Add_Click({
         $mdText = Get-Content -Path $readmePath -Raw -Encoding UTF8
         $htmlBody = ""
 
-        # Lê o Markdown como texto puro
-        $mdText = Get-Content -Path $readmePath -Raw -Encoding UTF8
-    
         # Converte usando nossa função 100% PowerShell (Sem DLLs!)
         $htmlBody = Convert-MarkdownToHtml -Markdown $mdText
         

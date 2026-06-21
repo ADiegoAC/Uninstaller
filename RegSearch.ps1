@@ -51,7 +51,7 @@ param(
 )
 
 Set-StrictMode -Version Latest
- $ErrorActionPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'SilentlyContinue'
 
 # BLOQUEIA A BARRA DE PROGRESSO E OUTRAS SAÍDAS VISUAIS SE FOR PARA EXPORTAR JSON
 if ($ExportJson) {
@@ -59,23 +59,23 @@ if ($ExportJson) {
 }
 
 # --- Prepara o padrão de busca ---
- $pattern = if ($Regex) { $s } else { [regex]::Escape($s) }
+$pattern = if ($Regex) { $s } else { [regex]::Escape($s) }
 
 function Test-Match([string] $text) {
     if ($CaseSensitive) { $text -cmatch $pattern }
-    else                { $text -imatch $pattern }
+    else { $text -imatch $pattern }
 }
 
 # Conjunto de nomes a pular (lookup O(1))
- $skipSet = [System.Collections.Generic.HashSet[string]]::new(
+$skipSet = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase
 )
 foreach ($sk in $Skip) { [void]$skipSet.Add($sk) }
 
 # --- Coleção de resultados ---
- $results  = [System.Collections.Generic.List[PSCustomObject]]::new()
- $scanned  = 0
- $skipped  = 0
+$results = [System.Collections.Generic.List[PSCustomObject]]::new()
+$scanned = 0
+$skipped = 0
 
 function Search-RegistryKey {
     param([string] $Path)
@@ -85,18 +85,18 @@ function Search-RegistryKey {
 
     if (-not $ExportJson -and $script:scanned % 500 -eq 0) {
         Write-Progress -Activity "Varrendo registro" `
-                       -Status "$script:scanned chaves | $($results.Count) resultados | $script:skipped puladas" `
-                       -CurrentOperation $Path
+            -Status "$script:scanned chaves | $($results.Count) resultados | $script:skipped puladas" `
+            -CurrentOperation $Path
     }
 
     # ── Testa o NOME da chave ──────────────────────────────────────────────────
     if (Test-Match $key.PSChildName) {
         $results.Add([PSCustomObject]@{
-            Tipo    = 'Chave'
-            Caminho = $Path
-            Nome    = $key.PSChildName
-            Dados   = ''
-        })
+                Tipo    = 'Chave'
+                Caminho = $Path
+                Nome    = $key.PSChildName
+                Dados   = ''
+            })
     }
 
     # ── Testa os VALORES da chave ──────────────────────────────────────────────
@@ -117,11 +117,11 @@ function Search-RegistryKey {
             $displayData = if ($rawData.Length -gt 80) { $rawData.Substring(0, 77) + '...' } else { $rawData }
 
             $results.Add([PSCustomObject]@{
-                Tipo    = 'Valor'
-                Caminho = $Path
-                Nome    = $displayName
-                Dados   = $displayData
-            })
+                    Tipo    = 'Valor'
+                    Caminho = $Path
+                    Nome    = $displayName
+                    Dados   = $displayData
+                })
         }
     }
 
@@ -153,13 +153,13 @@ if (-not $ExportJson) {
 }
 
 # --- Execução ---
- $swTotal = [System.Diagnostics.Stopwatch]::StartNew()
+$swTotal = [System.Diagnostics.Stopwatch]::StartNew()
 
 foreach ($hive in $Hives) {
     if ($TimerPerHive -and -not $ExportJson) {
         $swHive = [System.Diagnostics.Stopwatch]::StartNew()
-        $beforeCount  = $scanned
-        $beforeSkip   = $skipped
+        $beforeCount = $scanned
+        $beforeSkip = $skipped
         $beforeResults = $results.Count
     }
 
@@ -168,16 +168,16 @@ foreach ($hive in $Hives) {
     if ($TimerPerHive -and -not $ExportJson) {
         $swHive.Stop()
         $elapsed = [math]::Round($swHive.Elapsed.TotalSeconds, 2)
-        $delta   = $scanned - $beforeCount
-        $dSkip   = $skipped - $beforeSkip
-        $dRes    = $results.Count - $beforeResults
+        $delta = $scanned - $beforeCount
+        $dSkip = $skipped - $beforeSkip
+        $dRes = $results.Count - $beforeResults
         Write-Host "  [hive] $hive" -ForegroundColor DarkGray -NoNewline
         Write-Host "  ${elapsed}s" -ForegroundColor Yellow -NoNewline
         Write-Host "  |  ${delta} chaves  |  ${dSkip} puladas  |  ${dRes} resultados" -ForegroundColor DarkGray
     }
 }
 
- $swTotal.Stop()
+$swTotal.Stop()
 Write-Progress -Activity "Varrendo registro" -Completed
 
 # =======================================================
@@ -205,6 +205,6 @@ if ($results.Count -eq 0) {
 Write-Host "  $($results.Count) resultado(s) encontrado(s) para [$s]" -ForegroundColor Green
 Write-Host ''
 
- $results | Format-Table -Property Tipo, Nome, Dados, Caminho -AutoSize -Wrap
+$results | Format-Table -Property Tipo, Nome, Dados, Caminho -AutoSize -Wrap
 
 Write-Host ''
