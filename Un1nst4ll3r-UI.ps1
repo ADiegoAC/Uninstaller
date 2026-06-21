@@ -1,4 +1,4 @@
-# ======================================================================
+﻿# ======================================================================
 #  Un1nst4ll3r - Graphical User Interface
 #  Version: 1.5.1
 # ======================================================================
@@ -1622,7 +1622,7 @@ $btnViewLog.Add_Click({
 # --- Language Swap Triggers ---
 $btnLangPT.Add_Click({
         $script:CurrentLang = "pt-BR"
-        $script:LangData = $script:LangFullObject.$script:CurrentLang
+        $script:LangData = $langObj.$script:CurrentLang
         Update-UILanguage
     })
 
