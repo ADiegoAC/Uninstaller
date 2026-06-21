@@ -388,6 +388,12 @@ function Test-Un1nst4ll3rUninstallCompleted {
     ) | Where-Object { ![string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique
 
     foreach ($regPath in $registryTargets) {
+        # NOVA REGRA: Ignora a chave sintética de órfãos durante a verificação
+        # O desinstalador original não sabe que essa chave existe. O motor de limpeza cuidará dela.
+        if ($regPath -like "*\Un1nst4ll3r_Orphan_*") { 
+            continue 
+        }
+
         if (Test-Path $regPath -ErrorAction SilentlyContinue) {
             if (-not $Quiet) { Write-Un1Log -Category "VERIFY" -Message "Registry evidence still present: $regPath" -Color Red }
             return $false

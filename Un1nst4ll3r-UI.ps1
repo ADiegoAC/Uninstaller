@@ -1,4 +1,4 @@
-﻿# ======================================================================
+# ======================================================================
 #  Un1nst4ll3r - Graphical User Interface
 #  Version: 1.5.1
 # ======================================================================
@@ -107,13 +107,37 @@ function Convert-MarkdownToHtml {
 # ==========================================
 $script:LangFullObject = $langObj 
 $script:langPath = Join-Path $AppRoot "Un1nst4ll3r_Lang.json"
-$script:CurrentLang = "pt-BR"
+$script:CurrentLang = "pt-BR"  # Fallback; será sobrescrito pelo Default do JSON
 $script:LangData = $null
+
+# Helper: persiste o campo Default no arquivo de idiomas
+function Save-LangDefault {
+    param([string]$NewDefaultLang)
+    try {
+        $raw = [System.IO.File]::ReadAllText($script:langPath, [System.Text.Encoding]::UTF8)
+        $obj = ConvertFrom-Json -InputObject $raw
+        foreach ($key in $obj.PSObject.Properties.Name) {
+            $obj.$key.Default = ($key -eq $NewDefaultLang)
+        }
+        $obj | ConvertTo-Json -Depth 5 | Out-File -FilePath $script:langPath -Encoding UTF8
+    }
+    catch { <# Silencia erros de escrita; a UI ainda funciona normalmente #> }
+}
 
 if (Test-Path $script:langPath) {
     try {
         $langRaw = [System.IO.File]::ReadAllText($script:langPath, [System.Text.Encoding]::UTF8)
         $langObj = ConvertFrom-Json -InputObject $langRaw
+
+        # Detecta o idioma marcado como Default=true no JSON
+        $detectedLang = $langObj.PSObject.Properties | Where-Object {
+            $_.Value.PSObject.Properties.Name -contains 'Default' -and $_.Value.Default -eq $true
+        } | Select-Object -First 1 -ExpandProperty Name
+
+        if (![string]::IsNullOrWhiteSpace($detectedLang)) {
+            $script:CurrentLang = $detectedLang
+        }
+
         $script:LangData = $langObj.$script:CurrentLang
     }
     catch {
@@ -1634,18 +1658,21 @@ $btnViewLog.Add_Click({
 $btnLangPT.Add_Click({
         $script:CurrentLang = "pt-BR"
         $script:LangData = $langObj.$script:CurrentLang
+        Save-LangDefault -NewDefaultLang "pt-BR"
         Update-UILanguage
     })
 
 $btnLangEN.Add_Click({
         $script:CurrentLang = "en-US"
         $script:LangData = $langObj.$script:CurrentLang
+        Save-LangDefault -NewDefaultLang "en-US"
         Update-UILanguage
     })
 
 $btnLangES.Add_Click({
         $script:CurrentLang = "es-ES"
         $script:LangData = $langObj.$script:CurrentLang
+        Save-LangDefault -NewDefaultLang "es-ES"
         Update-UILanguage
     })
 

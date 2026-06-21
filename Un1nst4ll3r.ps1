@@ -6,19 +6,20 @@
 # Força o terminal do Windows a usar UTF-8 para exibir acentos corretamente no console
 #[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 #[Console]::InputEncoding = [System.Text.Encoding]::UTF8
- #$OutputEncoding = [System.Text.Encoding]::UTF8
+#$OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Compatibilidade PowerShell 7: Carrega o módulo Appx via Windows PowerShell
 if ($PSVersionTable.PSVersion.Major -ge 7) {
     try {
         Import-Module Appx -UseWindowsPowerShell -WarningAction SilentlyContinue -ErrorAction Stop
-    } catch {
+    }
+    catch {
         Write-Warning "Falha ao carregar o módulo Appx via compatibilidade. O scan AppX pode falhar."
     }
 }
 
 # Inicializa o acumulador global de logs de depuração (Agora como ArrayList para guardar cores)
- $Global:Un1AnalysisLog = [System.Collections.ArrayList]::new()
+$Global:Un1AnalysisLog = [System.Collections.ArrayList]::new()
  
 function Write-Un1Log {
     param (
@@ -33,12 +34,12 @@ function Write-Un1Log {
     # Não imprimir no terminal — somente armazenar no log global
     if ($null -ne $Global:Un1AnalysisLog) {
         [void]$Global:Un1AnalysisLog.Add([PSCustomObject]@{
-            Timestamp = $timestamp
-            Category  = $Category
-            Message   = $Message
-            Color     = $Color
-            Text      = $formattedMessage
-        })
+                Timestamp = $timestamp
+                Category  = $Category
+                Message   = $Message
+                Color     = $Color
+                Text      = $formattedMessage
+            })
     }
     
     # Atualiza a SplashScreen da UI automaticamente, se existir
@@ -49,7 +50,7 @@ function Write-Un1Log {
 
 function Initialize-Un1nst4ll3rEvidenceRecord {
     param (
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [PSObject]$App
     )
 
@@ -74,7 +75,8 @@ function Initialize-Un1nst4ll3rEvidenceRecord {
     foreach ($property in $arrayProperties) {
         if ($App.PSObject.Properties.Name -notcontains $property -or $null -eq $App.$property) {
             Add-Member -InputObject $App -MemberType NoteProperty -Name $property -Value ([System.Collections.ArrayList]::new()) -Force
-        } elseif ($App.$property -isnot [System.Collections.ArrayList]) {
+        }
+        elseif ($App.$property -isnot [System.Collections.ArrayList]) {
             $buffer = [System.Collections.ArrayList]::new()
             foreach ($item in @($App.$property)) {
                 if ($null -ne $item) { [void]$buffer.Add($item) }
@@ -84,16 +86,16 @@ function Initialize-Un1nst4ll3rEvidenceRecord {
     }
 
     $scalarDefaults = @{
-        RegistryKey         = ""
-        SourceRegistryPath  = ""
-        InstallLocationRaw  = ""
-        DisplayIconRaw      = ""
-        RootPath            = ""
-        RootSource          = ""
+        RegistryKey           = ""
+        SourceRegistryPath    = ""
+        InstallLocationRaw    = ""
+        DisplayIconRaw        = ""
+        RootPath              = ""
+        RootSource            = ""
         AppxPackageFamilyName = ""
-        AppxInstallLocation = ""
-        ShortcutPath        = ""
-        ShortcutScope       = ""
+        AppxInstallLocation   = ""
+        ShortcutPath          = ""
+        ShortcutScope         = ""
     }
 
     foreach ($property in $scalarDefaults.Keys) {
@@ -105,9 +107,9 @@ function Initialize-Un1nst4ll3rEvidenceRecord {
 
 function Add-Un1nst4ll3rEvidenceValue {
     param (
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [PSObject]$App,
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$Property,
         $Value
     )
@@ -159,8 +161,8 @@ function Get-Un1nst4ll3rShortcutCache {
         [PSCustomObject]@{ Path = $machineShellPaths.'Common Programs'; Scope = "CommonStartMenu" },
         [PSCustomObject]@{ Path = $machineShellPaths.'Common Startup'; Scope = "CommonStartup" }
     ) | Where-Object { ![string]::IsNullOrWhiteSpace($_.Path) } |
-        ForEach-Object { [PSCustomObject]@{ Path = [System.Environment]::ExpandEnvironmentVariables($_.Path); scope = $_.Scope } } |
-        Sort-Object Path -Unique
+    ForEach-Object { [PSCustomObject]@{ Path = [System.Environment]::ExpandEnvironmentVariables($_.Path); scope = $_.Scope } } |
+    Sort-Object Path -Unique
 
     foreach ($root in $shortcutRoots) {
         $path = $root.Path
@@ -180,16 +182,17 @@ function Get-Un1nst4ll3rShortcutCache {
                     # MUDANÇA DE LÓGICA: Se tem Target, guarda. Se não tem Target, mas TEM IconLocation, guarda também!
                     if (![string]::IsNullOrWhiteSpace($expandedTarget) -or ![string]::IsNullOrWhiteSpace($expandedIconLoc)) {
                         $shortcutCache.Add([PSCustomObject]@{
-                            LnkName      = $lnk.BaseName
-                            Target       = $expandedTarget
-                            Arguments    = $shortcut.Arguments
-                            WorkingDir   = if (![string]::IsNullOrWhiteSpace($shortcut.WorkingDirectory)) { [System.Environment]::ExpandEnvironmentVariables($shortcut.WorkingDirectory) } else { "" }
-                            IconLocation = $expandedIconLoc
-                            ShortcutPath = $lnk.FullName
-                            ShortcutScope = $root.Scope
-                        }) | Out-Null
+                                LnkName       = $lnk.BaseName
+                                Target        = $expandedTarget
+                                Arguments     = $shortcut.Arguments
+                                WorkingDir    = if (![string]::IsNullOrWhiteSpace($shortcut.WorkingDirectory)) { [System.Environment]::ExpandEnvironmentVariables($shortcut.WorkingDirectory) } else { "" }
+                                IconLocation  = $expandedIconLoc
+                                ShortcutPath  = $lnk.FullName
+                                ShortcutScope = $root.Scope
+                            }) | Out-Null
                     }
-                } catch {}
+                }
+                catch {}
             }
         }
     }
@@ -229,13 +232,15 @@ function Get-Un1nst4ll3rMuiCache {
                         # Prioriza caminhos do Program Files se houver duplicatas
                         if (!$muiCache.ContainsKey($friendlyName)) {
                             $muiCache[$friendlyName] = $exePath
-                        } elseif ($exePath -match 'Program Files' -and $muiCache[$friendlyName] -notmatch 'Program Files') {
+                        }
+                        elseif ($exePath -match 'Program Files' -and $muiCache[$friendlyName] -notmatch 'Program Files') {
                             $muiCache[$friendlyName] = $exePath
                         }
                     }
                 }
             }
-        } catch {}
+        }
+        catch {}
     }
     
     Write-Un1Log -Category "MUICACHE" -Message "Cache complete. $($muiCache.Count) applications mapped." -Color Green
@@ -262,7 +267,8 @@ function Get-Un1nst4ll3rStartAppsCache {
                 $startAppsCache[$packageFamilyName] = $entryName
             }
         }
-    } catch {
+    }
+    catch {
         Write-Un1Log -Category "STARTAPPS" -Message "Get-StartApps is unavailable. AppX display names will use manifest fallbacks." -Color Blue
     }
 
@@ -275,9 +281,9 @@ function Get-Un1nst4ll3rStartAppsCache {
 # ==========================================
 function Resolve-Un1nst4ll3rAppxDisplayName {
     param (
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         $App,
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         $Manifest
     )
 
@@ -297,7 +303,8 @@ function Resolve-Un1nst4ll3rAppxDisplayName {
             if ($appNode.VisualElements -and $appNode.VisualElements.DisplayName) {
                 [void]$nameCandidates.Add($appNode.VisualElements.DisplayName)
             }
-        } catch {}
+        }
+        catch {}
     }
 
     if ($Manifest.Package.Properties.DisplayName) {
@@ -319,9 +326,9 @@ function Resolve-Un1nst4ll3rAppxDisplayName {
 # ==========================================
 function Test-Un1nst4ll3rVisibleAppxPackage {
     param (
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         $App,
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$DisplayName
     )
 
@@ -397,25 +404,26 @@ function Find-Un1nst4ll3rAppxAssetPath {
     if ($candidates.Count -eq 0) { return "" }
 
     $bestAsset = $candidates |
-        Sort-Object `
-            @{ Expression = {
-                $score = 500
-                if ($_.Name -match 'targetsize-48') { $score = 0 }
-                elseif ($_.Name -match 'targetsize-44') { $score = 5 }
-                elseif ($_.Name -match 'targetsize-40') { $score = 10 }
-                elseif ($_.Name -match 'targetsize-32') { $score = 15 }
-                elseif ($_.Name -match 'targetsize-64') { $score = 20 }
-                elseif ($_.Name -match 'scale-200') { $score = 25 }
-                elseif ($_.Name -match 'scale-150') { $score = 30 }
-                elseif ($_.Name -match 'scale-100') { $score = 35 }
-                elseif ($_.Name -ieq [System.IO.Path]::GetFileName($baseAssetPath)) { $score = 40 }
-                if ($_.Name -match 'altform-unplated') { $score += 100 }
-                elseif ($_.Name -match 'lightunplated') { $score += 110 }
-                elseif ($_.Name -match 'theme-') { $score += 120 }
-                $score
-            } },
-            @{ Expression = { $_.Name.Length } } |
-        Select-Object -First 1
+    Sort-Object `
+    @{ Expression = {
+            $score = 500
+            if ($_.Name -match 'targetsize-48') { $score = 0 }
+            elseif ($_.Name -match 'targetsize-44') { $score = 5 }
+            elseif ($_.Name -match 'targetsize-40') { $score = 10 }
+            elseif ($_.Name -match 'targetsize-32') { $score = 15 }
+            elseif ($_.Name -match 'targetsize-64') { $score = 20 }
+            elseif ($_.Name -match 'scale-200') { $score = 25 }
+            elseif ($_.Name -match 'scale-150') { $score = 30 }
+            elseif ($_.Name -match 'scale-100') { $score = 35 }
+            elseif ($_.Name -ieq [System.IO.Path]::GetFileName($baseAssetPath)) { $score = 40 }
+            if ($_.Name -match 'altform-unplated') { $score += 100 }
+            elseif ($_.Name -match 'lightunplated') { $score += 110 }
+            elseif ($_.Name -match 'theme-') { $score += 120 }
+            $score
+        } 
+    },
+    @{ Expression = { $_.Name.Length } } |
+    Select-Object -First 1
 
     if ($bestAsset) { return $bestAsset.FullName }
     return ""
@@ -426,9 +434,9 @@ function Find-Un1nst4ll3rAppxAssetPath {
 # ==========================================
 function Resolve-Un1nst4ll3rAppxLogoPath {
     param (
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         $App,
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         $Manifest
     )
 
@@ -442,19 +450,20 @@ function Resolve-Un1nst4ll3rAppxLogoPath {
             $visual = $appNode.VisualElements
             if ($visual) {
                 foreach ($candidate in @(
-                    $visual.Square44x44Logo,
-                    $visual.SmallLogo,
-                    $visual.Logo,
-                    $visual.Square150x150Logo,
-                    $visual.DefaultTile.Square71x71Logo,
-                    $visual.DefaultTile.Square150x150Logo
-                )) {
+                        $visual.Square44x44Logo,
+                        $visual.SmallLogo,
+                        $visual.Logo,
+                        $visual.Square150x150Logo,
+                        $visual.DefaultTile.Square71x71Logo,
+                        $visual.DefaultTile.Square150x150Logo
+                    )) {
                     if (![string]::IsNullOrWhiteSpace($candidate)) {
                         [void]$logoCandidates.Add($candidate)
                     }
                 }
             }
-        } catch {}
+        }
+        catch {}
     }
 
     if ($Manifest.Package.Properties.Logo) {
@@ -507,7 +516,8 @@ function Find-Un1nst4ll3rOrphans {
         # CORREÇÃO: Desempacota o objeto se ele vier com ExePath e RegKeyName
         if ($muiData -is [PSCustomObject] -and $muiData.PSObject.Properties.Name -contains 'ExePath') {
             $exePath = $muiData.ExePath
-        } else {
+        }
+        else {
             $exePath = $muiData # Fallback de compatibilidade se for string
         }
         
@@ -541,12 +551,21 @@ function Find-Un1nst4ll3rOrphans {
         
         $installDir = Split-Path $exePath
         
-        # DEDUPLICAÇÃO POR NOME (LOG ADICIONADO)
-        if ($knownNames -contains $muiName) { 
-            Write-Un1Log -Category "ORPHAN" -Message "Skipped (Name already in Registry): $muiName" -Color DarkGray
+        # DEDUPLICAÇÃO POR NOME (VALIDAÇÃO FUZZY)
+        $isAlreadyMappedByName = $false
+        foreach ($known in $knownNames) {
+            if ([string]::IsNullOrWhiteSpace($known)) { continue }
+            # Se um nome contém o outro (ex: "Notepad++" está dentro de "Notepad++ a free..."), pula!
+            if ($muiName -like "*$known*" -or $known -like "*$muiName*") {
+                $isAlreadyMappedByName = $true
+                break
+            }
+        }
+        if ($isAlreadyMappedByName) { 
+            Write-Un1Log -Category "ORPHAN" -Message "Skipped (Name already in Registry - Fuzzy Match): $muiName" -Color DarkGray
             continue 
         }
-
+        
         # BLACKLIST DE RECURSOS DO WINDOWS (LOG ADICIONADO)
         $isWindowsFeature = $false
         foreach ($winPath in $windowsNativePaths) {
@@ -627,7 +646,7 @@ function Find-Un1nst4ll3rOrphans {
             NoRepair             = $false
             ModifyPath           = ""
             IsMsi                = $false
-            DisplayIcon          = ""
+            DisplayIcon          = "$exePath"
             ExePath              = $exePath 
             ShortcutTitle        = "" 
             ShortcutTarget       = "" 
@@ -644,11 +663,101 @@ function Find-Un1nst4ll3rOrphans {
         Add-Un1nst4ll3rEvidenceValue -App $orphanRecord -Property "MuiCacheMatches" -Value $muiName
         Add-Un1nst4ll3rEvidenceValue -App $orphanRecord -Property "ResolvedBy" -Value "OrphanDiscovery"
 
-        $orphans.Add($orphanRecord) | Out-Null
+        # ==========================================
+        # CHAMADA DA NOVA FUNÇÃO AQUI
+        # ==========================================
+        Register-Un1nst4ll3rOrphanToRegistry -App $orphanRecord
+
+        $orphans.Add($orphanRecord) | Out-Null    
     }
     
     Write-Un1Log -Category "ORPHAN" -Message "Orphan discovery complete. $($orphans.Count) unregistered apps found." -Color Magenta
     return $orphans
+}
+
+# ==========================================
+# BLOCO AUXILIAR: Injeta Órfãos no Registro do Windows
+# ==========================================
+function Register-Un1nst4ll3rOrphanToRegistry {
+    param (
+        [Parameter(Mandatory = $true)]
+        [PSObject]$App
+    )
+
+    $safeName = ($App.Nome -replace '[^\w\s\-]', '').Trim() -replace '\s+', '_'
+    $regKeyName = "Un1nst4ll3r_Orphan_$safeName"
+    
+    $regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$regKeyName"
+    $regPathNormalized = "HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\$regKeyName"
+
+    try {
+        if (!(Test-Path $regPath)) {
+            New-Item -Path $regPath -Force -ErrorAction Stop | Out-Null
+            Write-Un1Log -Category "ORPHAN" -Message "Injecting synthetic registry entry for orphan: $regKeyName" -Color Cyan
+        }
+
+        $publisher = "Unknown (Mapped by Un1nst4ll3r)"
+        try {
+            if (![string]::IsNullOrWhiteSpace($App.ExePath) -and (Test-Path $App.ExePath)) {
+                $fileInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($App.ExePath)
+                if (![string]::IsNullOrWhiteSpace($fileInfo.CompanyName)) { $publisher = $fileInfo.CompanyName }
+            }
+        }
+        catch {}
+
+        # Grava APENAS os dados originais validados no Scan. Sem gambiarras.
+        $regProperties = @{
+            DisplayName     = $App.Nome
+            InstallLocation = $App.Local
+            UninstallString = $App.UninstallString
+            DisplayIcon     = $App.ExePath
+            PSChildName     = $regKeyName
+            NoModify        = 1
+            NoRepair        = 1
+            SystemComponent = 0
+        }
+
+        $nativeFailed = $false
+        foreach ($prop in $regProperties.Keys) {
+            try {
+                Set-ItemProperty -Path $regPath -Name $prop -Value $regProperties[$prop] -ErrorAction Stop
+            }
+            catch {
+                $nativeFailed = $true
+                break
+            }
+        }
+
+        if ($nativeFailed) {
+            Write-Un1Log -Category "ORPHAN" -Message "Falha de acesso ao registro. Tentando elevação: $regPathNormalized" -Color Magenta
+            
+            $cmd = "reg add `"$regPathNormalized`" /f"
+            $cmd += " & reg add `"$regPathNormalized`" /v `"DisplayName`" /t REG_SZ /d `"$($App.Nome)`" /f"
+            $cmd += " & reg add `"$regPathNormalized`" /v `"InstallLocation`" /t REG_SZ /d `"$($App.Local)`" /f"
+            $cmd += " & reg add `"$regPathNormalized`" /v `"UninstallString`" /t REG_SZ /d `"$($App.UninstallString)`" /f"
+            $cmd += " & reg add `"$regPathNormalized`" /v `"DisplayIcon`" /t REG_SZ /d `"$($App.ExePath)`" /f"
+            $cmd += " & reg add `"$regPathNormalized`" /v `"Publisher`" /t REG_SZ /d `"$publisher`" /f"
+            $cmd += " & reg add `"$regPathNormalized`" /v `"NoModify`" /t REG_DWORD /d 1 /f"
+            $cmd += " & reg add `"$regPathNormalized`" /v `"NoRepair`" /t REG_DWORD /d 1 /f"
+            $cmd += " & reg add `"$regPathNormalized`" /v `"SystemComponent`" /t REG_DWORD /d 0 /f"
+
+            Start-Process -FilePath "cmd.exe" -ArgumentList "/c $cmd" -Verb RunAs -Wait -WindowStyle Hidden -ErrorAction Stop | Out-Null
+        }
+
+        # Atualiza o objeto em memória para o JSON
+        $App.Chave = $regKeyName
+        $App.RegistryKey = $regKeyName
+        $App.SourceRegistryPath = $regPath
+        Add-Un1nst4ll3rEvidenceValue -App $App -Property "RegistryKeyPaths" -Value $regPath
+        Add-Un1nst4ll3rEvidenceValue -App $App -Property "CleanupRegistryTargets" -Value $regPath
+        Add-Un1nst4ll3rEvidenceValue -App $App -Property "ResolvedBy" -Value "OrphanRegistryInjection"
+        
+        Write-Un1Log -Category "ORPHAN" -Message "Synthetic registry entry successfully updated for: $($App.Nome)" -Color Green
+
+    }
+    catch {
+        Write-Un1Log -Category "ORPHAN" -Message "Failed to inject registry entry for $($App.Nome): $_" -Color DarkRed
+    }
 }
 
 # ==========================================
@@ -793,15 +902,20 @@ function Get-Un1nst4ll3rScan {
             Add-Un1nst4ll3rEvidenceValue -App $appxRecord -Property "ResolvedBy" -Value "Appx.Manifest"
 
             $installedPrograms.Add($appxRecord) | Out-Null
-        } catch {}
+        }
+        catch {}
     }
     
     # ==========================================
     # BLOCO 1.5: Descoberta de Apps sem Registro (Orphans)
     # ==========================================
-    $orphanApps = Find-Un1nst4ll3rOrphans -ResolvedPrograms $installedPrograms
+    # O uso do @() garante que mesmo se houver só 1 órfão, ele venha como Array
+    $orphanApps = @(Find-Un1nst4ll3rOrphans -ResolvedPrograms $installedPrograms)
+    
     if ($orphanApps.Count -gt 0) {
-        $installedPrograms.AddRange($orphanApps)
+        foreach ($orphan in $orphanApps) {
+            $installedPrograms.Add($orphan) | Out-Null
+        }
     }
     
     $resultList = $installedPrograms | Sort-Object Status, Nome -Unique
@@ -814,7 +928,7 @@ function Get-Un1nst4ll3rScan {
 # ==========================================
 function Get-Un1nst4ll3rDeepSize {
     param (
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [Array]$ProgramList
     )
     
@@ -927,7 +1041,8 @@ function Get-Un1nst4ll3rDeepSize {
             $muiExe = $null
             if ($muiEntry -is [PSCustomObject] -and $muiEntry.PSObject.Properties.Name -contains 'ExePath') {
                 $muiExe = $muiEntry.ExePath
-            } else {
+            }
+            else {
                 $muiExe = $muiEntry # Fallback de compatibilidade se for string
             }
             Add-Un1nst4ll3rEvidenceValue -App $prog -Property "MuiCacheMatches" -Value $(if ($matchKey) { $matchKey } else { $prog.Nome })
@@ -959,9 +1074,10 @@ function Get-Un1nst4ll3rDeepSize {
                     Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "MuiCache"
                     Write-Un1Log -Category "LOCATE" -Message "GOT via MuiCache! Exe=$muiExe | Dir=$dir (Skipped Disk Scan & Exe Heuristic)" -Color Green
                 }
-            } elseif ($muiExe -and !$isValidMuiExe) {
-                 # Log avisando que o MuiCache tentou nos enganar, mas falhou!
-                 Write-Un1Log -Category "LOCATE" -Message "MuiCache rejected (Setup/Invalid path): $muiExe" -Color Blue
+            }
+            elseif ($muiExe -and !$isValidMuiExe) {
+                # Log avisando que o MuiCache tentou nos enganar, mas falhou!
+                Write-Un1Log -Category "LOCATE" -Message "MuiCache rejected (Setup/Invalid path): $muiExe" -Color Blue
             }
         }
         
@@ -1025,7 +1141,7 @@ function Get-Un1nst4ll3rDeepSize {
                 # BÔNUS: E se o Target for ruim, mas o ÍCONE aponta pra pasta do app?
                 # ======================================================================
                 elseif (!$guessedPath -and ![string]::IsNullOrWhiteSpace($lnk.IconLocation)) {
-                    $cleanIconPath = $lnk.IconLocation -replace ',\d+$','' -replace '"',''
+                    $cleanIconPath = $lnk.IconLocation -replace ',\d+$', '' -replace '"', ''
                     $iconDir = Split-Path $cleanIconPath -ErrorAction SilentlyContinue
                     
                     if (![string]::IsNullOrWhiteSpace($iconDir) -and (Test-Path $iconDir -ErrorAction SilentlyContinue) -and $iconDir -notmatch 'Windows\\System') {
@@ -1081,7 +1197,8 @@ function Get-Un1nst4ll3rDeepSize {
                         Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "MSI.ProductInfo"
                         Write-Un1Log -Category "LOCATE" -Message "Local found via MSI COM: $guessedPath" -Color Green
                     }
-                } catch {}
+                }
+                catch {}
             }
             if (!$guessedPath -and $prog.UninstallString -notmatch "msiexec") {
                 $dir = $null
@@ -1098,44 +1215,45 @@ function Get-Un1nst4ll3rDeepSize {
         }
         # ── PRIORIDADE 6: App Paths (AppName -> ExePath) ──
 
-            if (!$guessedPath -and ![string]::IsNullOrWhiteSpace($prog.Nome)) {
-                $safeAppName = $prog.Nome -replace '\(.*\)', '' -replace '\s+\d+.*', '' -replace '[^\w\s\-+]', ''
-                $appWords = @($safeAppName -split '\s+' | Where-Object { $_ -notin $genericWords -and $_.Length -gt 1 })
+        if (!$guessedPath -and ![string]::IsNullOrWhiteSpace($prog.Nome)) {
+            $safeAppName = $prog.Nome -replace '\(.*\)', '' -replace '\s+\d+.*', '' -replace '[^\w\s\-+]', ''
+            $appWords = @($safeAppName -split '\s+' | Where-Object { $_ -notin $genericWords -and $_.Length -gt 1 })
                 
-                $keywordsToTry = @($safeAppName) + $appWords | Select-Object -Unique
+            $keywordsToTry = @($safeAppName) + $appWords | Select-Object -Unique
                 
-                $appPathRegRoots = @(
-                    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths",
-                    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths"
-                )
+            $appPathRegRoots = @(
+                "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths",
+                "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths"
+            )
                 
-                foreach ($kw in $keywordsToTry) {
-                    if ($guessedPath) { break }
-                    foreach ($regRoot in $appPathRegRoots) {
-                        $exeKey = Join-Path $regRoot "$kw.exe"
-                        if (Test-Path $exeKey -ErrorAction SilentlyContinue) {
-                            try {
-                                $defaultVal = (Get-ItemProperty -Path $exeKey -ErrorAction SilentlyContinue).'(default)'
-                                if (![string]::IsNullOrWhiteSpace($defaultVal)) {
-                                    $exePathExpanded = [System.Environment]::ExpandEnvironmentVariables($defaultVal)
-                                    if (Test-Path $exePathExpanded -ErrorAction SilentlyContinue) {
-                                        $dir = Split-Path $exePathExpanded
-                                        if ($dir -and (Test-Path $dir)) {
-                                            $guessedPath = $dir
-                                            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "RegistryKeyPaths" -Value $exeKey
-                                            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $exePathExpanded
-                                            $prog.RootSource = "Registry.AppPaths"
-                                            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Registry.AppPaths"
-                                            Write-Un1Log -Category "LOCATE" -Message "Location found via App Paths Registry: $guessedPath (Keyword: $kw)" -Color Green
-                                            break
-                                        }
+            foreach ($kw in $keywordsToTry) {
+                if ($guessedPath) { break }
+                foreach ($regRoot in $appPathRegRoots) {
+                    $exeKey = Join-Path $regRoot "$kw.exe"
+                    if (Test-Path $exeKey -ErrorAction SilentlyContinue) {
+                        try {
+                            $defaultVal = (Get-ItemProperty -Path $exeKey -ErrorAction SilentlyContinue).'(default)'
+                            if (![string]::IsNullOrWhiteSpace($defaultVal)) {
+                                $exePathExpanded = [System.Environment]::ExpandEnvironmentVariables($defaultVal)
+                                if (Test-Path $exePathExpanded -ErrorAction SilentlyContinue) {
+                                    $dir = Split-Path $exePathExpanded
+                                    if ($dir -and (Test-Path $dir)) {
+                                        $guessedPath = $dir
+                                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "RegistryKeyPaths" -Value $exeKey
+                                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $exePathExpanded
+                                        $prog.RootSource = "Registry.AppPaths"
+                                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Registry.AppPaths"
+                                        Write-Un1Log -Category "LOCATE" -Message "Location found via App Paths Registry: $guessedPath (Keyword: $kw)" -Color Green
+                                        break
                                     }
                                 }
-                            } catch {}
+                            }
                         }
+                        catch {}
                     }
                 }
             }
+        }
 
         # ── PRIORIDADE 7: Disk Scan (AppName -> FolderName -> ExePath) ──
         if (!$guessedPath -and ![string]::IsNullOrWhiteSpace($prog.Nome)) {
@@ -1168,7 +1286,8 @@ function Get-Un1nst4ll3rDeepSize {
                 $firstKeyword = $cacheKeyword 
             }
 
-            if (![string]::IsNullOrWhiteSpace($firstKeyword) -and $firstKeyword.Length -ge 4) {                foreach ($basePath in $commonPaths) {
+            if (![string]::IsNullOrWhiteSpace($firstKeyword) -and $firstKeyword.Length -ge 4) {
+                foreach ($basePath in $commonPaths) {
                     if (!(Test-Path $basePath)) { continue }
                     $foundDir = Get-ChildItem -Path $basePath -Directory -ErrorAction SilentlyContinue | Where-Object { 
                         $fName = $_.Name
@@ -1237,11 +1356,13 @@ function Get-Un1nst4ll3rDeepSize {
                 $prog.ExePath = $exeFromShortcut
                 Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $exeFromShortcut
                 Write-Un1Log -Category "LOCATE" -Message "ExePath confirmed via Shortcut/MuiCache: $exeFromShortcut" -Color Green
-            } elseif (![string]::IsNullOrWhiteSpace($prog.ExePath) -and !$isUpdater) {
+            }
+            elseif (![string]::IsNullOrWhiteSpace($prog.ExePath) -and !$isUpdater) {
                 # Já temos um ExePath pré-preenchido e não é updater
                 Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $prog.ExePath
                 Write-Un1Log -Category "LOCATE" -Message "ExePath already resolved (pre-filled): $($prog.ExePath)" -Color DarkGray
-            } else {
+            }
+            else {
                 # Roda a heurística pesada se não temos NADA, OU se o que achamos era um Updater
                 $uninstallExeName = if ($prog.UninstallString -match '\\([^\\]+\.exe)') { $Matches[1] } else { "" }
                 
@@ -1257,11 +1378,13 @@ function Get-Un1nst4ll3rDeepSize {
                     $prog.ExePath = $foundExe
                     Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $foundExe
                     Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Exe.Heuristic.Override"
-                } elseif ($isUpdater) {
+                }
+                elseif ($isUpdater) {
                     # Heurística falhou em achar o app real (pasta estranha?), fallback para o Updater
                     $prog.ExePath = $exeFromShortcut
                     Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $exeFromShortcut
-                } else {
+                }
+                else {
                     $prog.ExePath = $foundExe
                     Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $foundExe
                     if (![string]::IsNullOrWhiteSpace($foundExe)) {
@@ -1275,7 +1398,8 @@ function Get-Un1nst4ll3rDeepSize {
             Write-Un1Log -Category "LOCATE" -Message "Location not found for $($prog.Nome)." -Color Red
         }
 
-        $updatedList.Add($prog) | Out-Null    }
+        $updatedList.Add($prog) | Out-Null    
+    }
 
     Write-Un1Log -Category "LOCATE" -Message "Deep location discovery complete." -Color Green
     return $updatedList
@@ -1302,7 +1426,8 @@ function Resolve-Un1nst4ll3rMicrosoftPackage {
                 $pathExists = $false
                 if ($expandedPath -match '\.\w{3}$') {
                     $pathExists = Test-Path $expandedPath -ErrorAction SilentlyContinue
-                } else {
+                }
+                else {
                     $pathExists = !([string]::IsNullOrWhiteSpace((Get-Item $expandedPath* -ErrorAction SilentlyContinue | Select-Object -First 1)))
                 }
 
@@ -1321,12 +1446,14 @@ function Resolve-Un1nst4ll3rMicrosoftPackage {
                     
                     Write-Un1Log -Category "MS-PKG" -Message "Location confirmed via JSON: $($Prog.Local)" -Color Cyan
                     return $true
-                } else {
+                }
+                else {
                     Write-Un1Log -Category "MS-PKG" -Message "Rule matched, but path missing: $expandedPath" -Color Blue
                 }
             }
-        } catch {
-             Write-Un1Log -Category "MS-PKG" -Message "Invalid regex in SysPkgBank: '$($rule.Pattern)'" -Color DarkRed
+        }
+        catch {
+            Write-Un1Log -Category "MS-PKG" -Message "Invalid regex in SysPkgBank: '$($rule.Pattern)'" -Color DarkRed
         }
     }
 
@@ -1338,7 +1465,7 @@ function Resolve-Un1nst4ll3rMicrosoftPackage {
 # ==========================================
 function Get-Un1nst4ll3rSizeEngine {
     param (
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [Array]$ProgramList
     )
 
@@ -1368,7 +1495,8 @@ function Get-Un1nst4ll3rSizeEngine {
                 $wmiCache[$_.Name] = [long]$_.Size
             }
         }
-    } catch {
+    }
+    catch {
         Write-Un1Log -Category "SIZE" -Message "WMI Win32_InstalledWin32Program not available." -Color Blue
     }
 
@@ -1415,10 +1543,12 @@ function Get-Un1nst4ll3rSizeEngine {
                         $sizeFriendly = if ($prog.Tamanho -ge 1GB) { "{0:N2} GB" -f ($prog.Tamanho / 1GB) } else { "{0:N2} MB" -f ($prog.Tamanho / 1MB) }
                         Write-Un1Log -Category "SIZE" -Message "Disk size calculated: $sizeFriendly for $($prog.Nome)" -Color Green
                     }
-                } catch {
+                }
+                catch {
                     Write-Un1Log -Category "SIZE" -Message "I/O Error measuring: $($prog.Local)" -Color DarkRed
                 }
-            } else {
+            }
+            else {
                 Write-Un1Log -Category "SIZE" -Message "Disk I/O blocked (System protected path): $($prog.Local)" -Color Magenta
             }
         }
@@ -1433,9 +1563,9 @@ function Get-Un1nst4ll3rSizeEngine {
 # ==========================================
 # UI: Motor do Spinner Global
 # ==========================================
- $script:SpinnerSync = $null
- $script:SpinnerPS = $null
- $script:SpinnerRunspace = $null
+$script:SpinnerSync = $null
+$script:SpinnerPS = $null
+$script:SpinnerRunspace = $null
 
 function Start-Un1nst4ll3rSpinner {
     param([string]$InitialMessage = "Iniciando...", [System.Drawing.Point]$Location)
@@ -1459,93 +1589,95 @@ function Start-Un1nst4ll3rSpinner {
     $script:SpinnerPS.Runspace = $script:SpinnerRunspace
 
     $script:SpinnerPS.AddScript({
-        Add-Type -AssemblyName System.Windows.Forms
-        Add-Type -Assembly.Drawing
+            Add-Type -AssemblyName System.Windows.Forms
+            Add-Type -Assembly.Drawing
 
-        $form = New-Object System.Windows.Forms.Form
-        $form.Text = "Un1nst4ll3r"
-        $form.Size = New-Object System.Drawing.Size(380, 100)
-        $form.StartPosition = "Manual"
-        $form.Location = New-Object System.Drawing.Point($sync.PosX, $sync.PosY)
-        $form.FormBorderStyle = "FixedSingle"
-        $form.ControlBox = $false
-        $form.TopMost = $true
-        $form.BackColor = [System.Drawing.Color]::White
+            $form = New-Object System.Windows.Forms.Form
+            $form.Text = "Un1nst4ll3r"
+            $form.Size = New-Object System.Drawing.Size(380, 100)
+            $form.StartPosition = "Manual"
+            $form.Location = New-Object System.Drawing.Point($sync.PosX, $sync.PosY)
+            $form.FormBorderStyle = "FixedSingle"
+            $form.ControlBox = $false
+            $form.TopMost = $true
+            $form.BackColor = [System.Drawing.Color]::White
 
-        # ====================================================
-        # CONFIGURAÇÃO DE TAMANHO INDEPENDENTE DA IMAGEM
-        # ====================================================
-        $ImageWidth = 45   # <- Defina aqui a largura exata da imagem
-        $ImageHeight = 45  # <- Defina aqui a altura exata da imagem
+            # ====================================================
+            # CONFIGURAÇÃO DE TAMANHO INDEPENDENTE DA IMAGEM
+            # ====================================================
+            $ImageWidth = 45   # <- Defina aqui a largura exata da imagem
+            $ImageHeight = 45  # <- Defina aqui a altura exata da imagem
         
-        # A coluna do painel será um pouco maior que a imagem para criar uma "margem" visual
-        $ColumnWidth = $ImageWidth + 10 # 48 + 20 = 68px de largura de coluna
-        # ====================================================
+            # A coluna do painel será um pouco maior que a imagem para criar uma "margem" visual
+            $ColumnWidth = $ImageWidth + 10 # 48 + 20 = 68px de largura de coluna
+            # ====================================================
 
-        $panel = New-Object System.Windows.Forms.TableLayoutPanel
-        $panel.Dock = "Fill"
-        $panel.ColumnCount = 2
-        $panel.RowCount = 1
-        $panel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Absolute, $ColumnWidth))) | Out-Null
-        $panel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+            $panel = New-Object System.Windows.Forms.TableLayoutPanel
+            $panel.Dock = "Fill"
+            $panel.ColumnCount = 2
+            $panel.RowCount = 1
+            $panel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Absolute, $ColumnWidth))) | Out-Null
+            $panel.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
 
-        $imgPath = Join-Path $sync.AppRoot "busy.gif" 
-        $picBox = $null
-        if (Test-Path $imgPath -ErrorAction SilentlyContinue) {
-            $picBox = New-Object System.Windows.Forms.PictureBox
+            $imgPath = Join-Path $sync.AppRoot "busy.gif" 
+            $picBox = $null
+            if (Test-Path $imgPath -ErrorAction SilentlyContinue) {
+                $picBox = New-Object System.Windows.Forms.PictureBox
             
-            # Define o tamanho exato do PictureBox, independente do painel
-            $picBox.Width = $ImageWidth
-            $picBox.Height = $ImageHeight
+                # Define o tamanho exato do PictureBox, independente do painel
+                $picBox.Width = $ImageWidth
+                $picBox.Height = $ImageHeight
             
-            # Zoom para preencher o tamanho exato definido acima (sem distorcer se a imagem não for quadrada)
-            $picBox.SizeMode = "StretchImage" 
+                # Zoom para preencher o tamanho exato definido acima (sem distorcer se a imagem não for quadrada)
+                $picBox.SizeMode = "StretchImage" 
             
-            # Ancoragem: Amarra nos 4 lados. Como o PictureBox é menor que a célula do painel, 
-            # isso fará com que ele fique perfeitamente centralizado dentro do espaço da coluna
-            $picBox.Anchor = "Left"
+                # Ancoragem: Amarra nos 4 lados. Como o PictureBox é menor que a célula do painel, 
+                # isso fará com que ele fique perfeitamente centralizado dentro do espaço da coluna
+                $picBox.Anchor = "Left"
             
-            $picBox.Image = [System.Drawing.Image]::FromFile($imgPath)
-            $panel.Controls.Add($picBox, 0, 0) | Out-Null
-        } else {
-            $lblFallback = New-Object System.Windows.Forms.Label
-            $lblFallback.Text = "⏳"
-            $lblFallback.Dock = "Fill"
-            $lblFallback.TextAlign = "MiddleCenter"
-            $lblFallback.Font = New-Object System.Drawing.Font("Segoe UI", 18)
-            $panel.Controls.Add($lblFallback, 0, 0) | Out-Null
-        }
-
-        $lbl = New-Object System.Windows.Forms.Label
-        $lbl.Dock = "Fill"
-        $lbl.TextAlign = "MiddleLeft"
-        $lbl.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Regular)
-        $lbl.Margin = New-Object System.Windows.Forms.Padding(5, 0, 5, 0)
-        $lbl.Text = $sync.Message
-        $panel.Controls.Add($lbl, 1, 0) | Out-Null
-
-        $form.Controls.Add($panel)
-
-        $timer = New-Object System.Windows.Forms.Timer
-        $timer.Interval = 100
-        $timer.Add_Tick({
-            if ($sync.Stop) {
-                $timer.Stop()
-                $form.Close()
-            } else {
-                $lbl.Text = $sync.Message
+                $picBox.Image = [System.Drawing.Image]::FromFile($imgPath)
+                $panel.Controls.Add($picBox, 0, 0) | Out-Null
             }
-        })
-        $timer.Start()
+            else {
+                $lblFallback = New-Object System.Windows.Forms.Label
+                $lblFallback.Text = "⏳"
+                $lblFallback.Dock = "Fill"
+                $lblFallback.TextAlign = "MiddleCenter"
+                $lblFallback.Font = New-Object System.Drawing.Font("Segoe UI", 18)
+                $panel.Controls.Add($lblFallback, 0, 0) | Out-Null
+            }
 
-        [void]$form.ShowDialog()
+            $lbl = New-Object System.Windows.Forms.Label
+            $lbl.Dock = "Fill"
+            $lbl.TextAlign = "MiddleLeft"
+            $lbl.Font = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Regular)
+            $lbl.Margin = New-Object System.Windows.Forms.Padding(5, 0, 5, 0)
+            $lbl.Text = $sync.Message
+            $panel.Controls.Add($lbl, 1, 0) | Out-Null
+
+            $form.Controls.Add($panel)
+
+            $timer = New-Object System.Windows.Forms.Timer
+            $timer.Interval = 100
+            $timer.Add_Tick({
+                    if ($sync.Stop) {
+                        $timer.Stop()
+                        $form.Close()
+                    }
+                    else {
+                        $lbl.Text = $sync.Message
+                    }
+                })
+            $timer.Start()
+
+            [void]$form.ShowDialog()
         
-        if ($null -ne $picBox -and $null -ne $picBox.Image) {
-            $picBox.Image.Dispose()
-        }
-        $timer.Dispose()
-        $form.Dispose()
-    }) | Out-Null
+            if ($null -ne $picBox -and $null -ne $picBox.Image) {
+                $picBox.Image.Dispose()
+            }
+            $timer.Dispose()
+            $form.Dispose()
+        }) | Out-Null
 
     $script:SpinnerPS.BeginInvoke() | Out-Null
 }
