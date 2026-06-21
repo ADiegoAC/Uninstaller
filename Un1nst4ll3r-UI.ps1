@@ -1,4 +1,4 @@
-﻿# ======================================================================
+# ======================================================================
 #  Un1nst4ll3r - Graphical User Interface
 #  Version: 1.5.1
 # ======================================================================
@@ -921,7 +921,7 @@ $traceFooterPanel.Padding = New-Object System.Windows.Forms.Padding(10, 5, 10, 5
 
 # Botão do Rodapé (Largura total do rodapé)
 $btnConfirmClean = New-Object System.Windows.Forms.Button
-$btnConfirmClean.Text = "LIMPAR VESTÍGIOS SELECIONADOS"
+$btnConfirmClean.Text = $script:LangData.BtnConfirmClean
 $btnConfirmClean.Font = New-Object System.Drawing.Font("Consolas", 11, [System.Drawing.FontStyle]::Bold)
 $btnConfirmClean.BackColor = [System.Drawing.Color]::FromArgb(60, 140, 210)
 $btnConfirmClean.ForeColor = [System.Drawing.Color]::Black
@@ -997,7 +997,7 @@ $traceFooterPanel.BackColor = [System.Drawing.Color]::FromArgb(10, 20, 30)
 $traceFooterPanel.Padding = New-Object System.Windows.Forms.Padding(10, 5, 10, 5)
 
 $btnConfirmClean = New-Object System.Windows.Forms.Button
-$btnConfirmClean.Text = "LIMPAR VESTÍGIOS SELECIONADOS"
+$btnConfirmClean.Text = $script:LangData.BtnConfirmClean
 $btnConfirmClean.Font = New-Object System.Drawing.Font("Consolas", 11, [System.Drawing.FontStyle]::Bold)
 $btnConfirmClean.BackColor = [System.Drawing.Color]::FromArgb(60, 140, 210)
 $btnConfirmClean.ForeColor = [System.Drawing.Color]::Black
@@ -1362,10 +1362,10 @@ $btnUninstall.Add_Click({
         $spinnerPosY = $form.Location.Y + $form.Height - 100 - 20 
         $spinnerPos = New-Object System.Drawing.Point($spinnerPosX, $spinnerPosY)
 
-        Start-Un1nst4ll3rSpinner -InitialMessage "Preparando desinstalação..." -Location $spinnerPos
+        Start-Un1nst4ll3rSpinner -InitialMessage ($script:LangData.SpinnerPreparingUninstall) -Location $spinnerPos
 
         try {
-            Update-Un1nst4ll3rSpinner -Message "Desinstalando $($AppData.Nome)..."
+            Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerUninstalling -f $AppData.Nome)
             $params = @{
                 AppName                   = $AppData.Nome
                 UninstallStringValue      = $AppData.UninstallString
@@ -1380,7 +1380,7 @@ $btnUninstall.Add_Click({
                 return
             }
 
-            Update-Un1nst4ll3rSpinner -Message "Verificando vestígios..."
+            Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerVerifyingTraces)
             $uninstallCompleted = Wait-Un1nst4ll3rUninstallCompleted -App $AppData -TimeoutSeconds 60
             
             # SE O USUÁRIO DISSE QUE NÃO DESINSTALOU OU SE FALHOU NO DOUBLE CHECK, RETORNA E ABORTA AQUI!
@@ -1389,7 +1389,7 @@ $btnUninstall.Add_Click({
                 return
             }
 
-            Update-Un1nst4ll3rSpinner -Message "Mapeando vestígios para remoção..."
+            Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerMappingTraces)
 
             $Global:PendingCleanApp = $AppData
             $Global:PendingCleanCache = $cacheData
@@ -1398,7 +1398,7 @@ $btnUninstall.Add_Click({
 
             # NOVO: Se não houver vestígios, atualiza o cache e volta direto para o Grid
             if ($traceTargets.Count -eq 0) {
-                $statusLabel.Text = "$($AppData.Nome) foi desinstalado com sucesso. Nenhum vestígios deixado."
+                $statusLabel.Text = $script:LangData.StatusUninstalledNoTraces -f $AppData.Nome
                 $updatedCache = Remove-Un1nst4ll3rJsonAppRecord -CacheData $cacheData -GridRow $dataGridView.CurrentRow
                 Save-Un1nst4ll3rJsonCacheData -Data $updatedCache
                 Load-GridFromJson -Path $script:jsonPath | Out-Null
@@ -1450,10 +1450,10 @@ $btnCleanTraces.Add_Click({
         $spinnerPosY = $form.Location.Y + $form.Height - 100 - 20 
         $spinnerPos = New-Object System.Drawing.Point($spinnerPosX, $spinnerPosY)
 
-        Start-Un1nst4ll3rSpinner -InitialMessage "FORCE UNINSTALL: $($AppData.Nome)" -Location $spinnerPos
+        Start-Un1nst4ll3rSpinner -InitialMessage ($script:LangData.SpinnerForceUninstall -f $AppData.Nome) -Location $spinnerPos
 
         try {
-            Update-Un1nst4ll3rSpinner -Message "Desinstalando..."
+            Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerUninstallingSimple)
             $params = @{
                 AppName                   = $AppData.Nome
                 UninstallStringValue      = $AppData.UninstallString
@@ -1465,14 +1465,14 @@ $btnCleanTraces.Add_Click({
 
             if (!$UninstallResult) { return }
 
-            Update-Un1nst4ll3rSpinner -Message "Verificando remoção..."
+            Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerVerifyingRemoval)
             $uninstallCompleted = Wait-Un1nst4ll3rUninstallCompleted -App $AppData -TimeoutSeconds 60
             if (!$uninstallCompleted) {
                 [System.Windows.Forms.MessageBox]::Show($L.UninstallFailedWarning, $L.WarningTitle, $L.BtnOk, "Warning")
                 return
             }
 
-            Update-Un1nst4ll3rSpinner -Message "Mapeando e limpando vestígios automaticamente..."
+            Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerMappingAutoClean)
             $traceTargets = Get-Un1nst4ll3rTraceTargets -App $AppData -InstalledApps $cacheData -AppRoot $AppRoot        
 
             # Popula a ListView
@@ -1497,7 +1497,7 @@ $btnCleanTraces.Add_Click({
 
             # BLOQUEIA O BOTÃO MANUAL PARA EVITAR CLIQUES ACIDENTAIS DURANTE OS 2 SEGUNDOS
             $btnConfirmClean.Enabled = $false
-            $btnConfirmClean.Text = "LIMPANDO AUTOMATICAMENTE..."
+            $btnConfirmClean.Text = $script:LangData.SpinnerAutoCleaningStatus
 
             $dataGridView.Visible = $false
             $tracePanel.Visible = $true
@@ -1539,7 +1539,7 @@ $btnConfirmClean.Add_Click({
         $PosY = $form.Location.Y + $form.Height - 100 - 20 
         $spinnerPos = New-Object System.Drawing.Point($posX, $posY)
 
-        Start-Un1nst4ll3rSpinner -InitialMessage "Limpando vestígios..." -Location $spinnerPos
+        Start-Un1nst4ll3rSpinner -InitialMessage ($script:LangData.SpinnerCleaningTraces) -Location $spinnerPos
 
         try {
             # Coleta apenas os itens marcados na ListView
@@ -1550,7 +1550,7 @@ $btnConfirmClean.Add_Click({
                 }
             }
 
-            Update-Un1nst4ll3rSpinner -Message "Removendo $($targetsToClean.Count) itens..."
+            Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerRemovingItems -f $targetsToClean.Count)
             $cleanedCount = Remove-Un1nst4ll3rTraces -Targets $targetsToClean
         
             $statusLabel.Text = $script:LangData.StatusUninstallComplete -f $Global:PendingCleanApp.Nome, $cleanedCount
@@ -1782,7 +1782,7 @@ $btnAbout.Add_Click({
         $lblInfo.BackColor = [System.Drawing.Color]::Transparent
 
         $btnClose = New-Object System.Windows.Forms.Button
-        $btnClose.Text = "CLOSE"
+        $btnClose.Text = $script:LangData.BtnClose
         $btnClose.FlatStyle = "Flat"
         $btnClose.BackColor = [System.Drawing.Color]::FromArgb(40, 40, 40)
         $btnClose.ForeColor = [System.Drawing.Color]::White
