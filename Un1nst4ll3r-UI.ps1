@@ -670,6 +670,17 @@ $actionsPanel.Height = 65
 $actionsPanel.BackColor = [System.Drawing.Color]::FromArgb(10, 20, 30)
 $actionsPanel.Padding = New-Object System.Windows.Forms.Padding(10, 5, 10, 5)
 
+        $actionsPanel.Add_Paint({
+                param($sender, $e)
+                $rect = $sender.ClientRectangle
+                $color1 = [System.Drawing.Color]::FromArgb(20, 20, 20)
+                $color2 = [System.Drawing.Color]::FromArgb(10, 20, 40) # Subtle deep blue-gray fade
+                $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect, $color1, $color2, [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
+                $e.Graphics.FillRectangle($brush, $rect)
+                $brush.Dispose()
+            })
+
+
 # --- Primary Buttons (Blue Gradients, Black Text) ---
 $btnScan = New-Object System.Windows.Forms.Button
 $btnScan.Text = $script:LangData.BtnScanList
