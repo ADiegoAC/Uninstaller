@@ -711,6 +711,7 @@ function Register-Un1nst4ll3rOrphanToRegistry {
             InstallLocation = $App.Local
             UninstallString = $App.UninstallString
             DisplayIcon     = $App.ExePath
+            Publisher       = $publisher
             PSChildName     = $regKeyName
             NoModify        = 1
             NoRepair        = 1
