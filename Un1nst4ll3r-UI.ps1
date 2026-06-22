@@ -874,8 +874,8 @@ $dataGridView.Columns.Add("Status", $script:LangData.ColStatus) | Out-Null
 # DataGridView Columns - Specific Configurations
 # ============================================================================
 $dataGridView.Columns["TamanhoBytes"].Visible = $false
-$dataGridView.Columns["Nome"].AutoSizeMode = [System.Windows.Forms.DataGridViewAutoSizeColumnMode]::Fill
-$dataGridView.Columns["Nome"].MinimumWidth = 150
+$dataGridView.Columns["Local"].AutoSizeMode = [System.Windows.Forms.DataGridViewAutoSizeColumnMode]::Fill
+$dataGridView.Columns["Local"].MinimumWidth = 200
 
 # ============================================================================
 # Context Menu and Right-Click Selection
@@ -965,7 +965,27 @@ $traceFooterPanel.Height = 50
 $traceFooterPanel.BackColor = [System.Drawing.Color]::FromArgb(10, 20, 30)
 $traceFooterPanel.Padding = New-Object System.Windows.Forms.Padding(10, 5, 10, 5)
 
-# Botão do Rodapé (Largura total do rodapé)
+# Cria um TableLayoutPanel para dividir o espaço em 50/50
+$footerTableLayout = New-Object System.Windows.Forms.TableLayoutPanel
+$footerTableLayout.Dock = "Fill"
+$footerTableLayout.ColumnCount = 2
+$footerTableLayout.RowCount = 1
+# Define que cada coluna vai ocupar 50% do espaço
+$footerTableLayout.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 50))) | Out-Null
+$footerTableLayout.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 50))) | Out-Null
+
+# Botão procurar vestígios
+$btnNewSearchTraces = New-Object System.Windows.Forms.Button
+$btnNewSearchTraces.Text = $script:LangData.BtnNewSearchTraces
+$btnNewSearchTraces.Font = New-Object System.Drawing.Font("Consolas", 11, [System.Drawing.FontStyle]::Bold)
+$btnNewSearchTraces.BackColor = [System.Drawing.Color]::FromArgb(60, 140, 210)
+$btnNewSearchTraces.ForeColor = [System.Drawing.Color]::Black
+$btnNewSearchTraces.FlatStyle = "Flat"
+$btnNewSearchTraces.Dock = "Fill"
+# Adiciona uma pequena margem à direita para não deixar os botões colados
+$btnNewSearchTraces.Margin = New-Object System.Windows.Forms.Padding(0, 0, 3, 0)
+
+# Botão limpar vestigios
 $btnConfirmClean = New-Object System.Windows.Forms.Button
 $btnConfirmClean.Text = $script:LangData.BtnConfirmClean
 $btnConfirmClean.Font = New-Object System.Drawing.Font("Consolas", 11, [System.Drawing.FontStyle]::Bold)
@@ -973,8 +993,15 @@ $btnConfirmClean.BackColor = [System.Drawing.Color]::FromArgb(60, 140, 210)
 $btnConfirmClean.ForeColor = [System.Drawing.Color]::Black
 $btnConfirmClean.FlatStyle = "Flat"
 $btnConfirmClean.Dock = "Fill"
+# Adiciona uma pequena margem à esquerda para não deixar os botões colados
+$btnConfirmClean.Margin = New-Object System.Windows.Forms.Padding(3, 0, 0, 0)
 
-$traceFooterPanel.Controls.Add($btnConfirmClean)
+# Adiciona os botões dentro das colunas do TableLayoutPanel (Coluna 0 e Coluna 1)
+$footerTableLayout.Controls.Add($btnNewSearchTraces, 0, 0)
+$footerTableLayout.Controls.Add($btnConfirmClean, 1, 0)
+
+# Adiciona o TableLayoutPanel ao Rodapé
+$traceFooterPanel.Controls.Add($footerTableLayout)
 
 # ============================================================================
 # PAINEL DE LIMPEZA DE VESTÍGIOS (ListView Docked Fill)
@@ -1022,28 +1049,6 @@ if ($folderIcon) { $traceImageList.Images.Add($folderIcon) }
 if ($fileIcon) { $traceImageList.Images.Add($fileIcon) }
 if ($regIcon) { $traceImageList.Images.Add($regIcon) }
 
-# Criação do Painel
-$tracePanel = New-Object System.Windows.Forms.Panel
-$tracePanel.Dock = "Fill"
-$tracePanel.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
-$tracePanel.Visible = $false
-
-# Rodapé do Painel
-$traceFooterPanel = New-Object System.Windows.Forms.Panel
-$traceFooterPanel.Dock = "Bottom"
-$traceFooterPanel.Height = 50
-$traceFooterPanel.BackColor = [System.Drawing.Color]::FromArgb(10, 20, 30)
-$traceFooterPanel.Padding = New-Object System.Windows.Forms.Padding(10, 5, 10, 5)
-
-$btnConfirmClean = New-Object System.Windows.Forms.Button
-$btnConfirmClean.Text = $script:LangData.BtnConfirmClean
-$btnConfirmClean.Font = New-Object System.Drawing.Font("Consolas", 11, [System.Drawing.FontStyle]::Bold)
-$btnConfirmClean.BackColor = [System.Drawing.Color]::FromArgb(60, 140, 210)
-$btnConfirmClean.ForeColor = [System.Drawing.Color]::Black
-$btnConfirmClean.FlatStyle = "Flat"
-$btnConfirmClean.Dock = "Fill"
-$traceFooterPanel.Controls.Add($btnConfirmClean)
-
 # Configuração da ListView
 $traceListView = New-Object System.Windows.Forms.ListView
 $traceListView.Dock = "Fill"
@@ -1057,8 +1062,8 @@ $traceListView.SmallImageList = $traceImageList
 
 $traceListView.Columns.Add($script:LangData.TraceColType, 130) | Out-Null
 $traceListView.Columns.Add($script:LangData.TraceColPath, 600) | Out-Null
-$traceListView.Columns.Add($script:LangData.TraceColStatus, 180) | Out-Null
-$traceListView.Columns.Add("Verificar", 100) | Out-Null
+$traceListView.Columns.Add($script:LangData.TraceColStatus, 250) | Out-Null
+$traceListView.Columns.Add("Verificar", 150) | Out-Null
 
 # Evento de Clique (Abre a pasta se clicar no texto "Abrir Pasta")
 $traceListView.Add_MouseDown({
@@ -1071,7 +1076,7 @@ $traceListView.Add_MouseDown({
         
             if ($null -ne $hitTest.Item -and $null -ne $hitTest.SubItem) {
                 # Se o texto clicado for "Abrir Pasta"
-                if ($hitTest.SubItem.Text -eq "Abrir Pasta") {
+                if ($hitTest.SubItem.Text -eq $script:LangData.TraceColOpenFolder) {
                     $path = $hitTest.Item.Tag
                 
                     if (![string]::IsNullOrWhiteSpace($path) -and (Test-Path $path)) {
@@ -1079,7 +1084,7 @@ $traceListView.Add_MouseDown({
                         Start-Process "explorer.exe" -ArgumentList "`"$path`""
                     }
                     else {
-                        [System.Windows.Forms.MessageBox]::Show("A pasta não existe mais ou o caminho é inválido.", "Aviso", 0, 48)
+                        [System.Windows.Forms.MessageBox]::Show($script:LangData.MsgFolderInvalid, $script:LangData.TitleWarning, 0, 48)
                     }
                 }
             }
@@ -1088,7 +1093,6 @@ $traceListView.Add_MouseDown({
 
 $tracePanel.Controls.Add($traceListView)
 $tracePanel.Controls.Add($traceFooterPanel)
-
 $form.Controls.Add($tracePanel)
 $tracePanel.BringToFront()
 
@@ -1198,6 +1202,8 @@ function Update-UILanguage {
     $splashSubTitle.Text = $L.SplashAnalyze
     $splashLogLabel.Text = $L.SplashInit
     
+    $btnNewSearchTraces.Text = $L.BtnNewSearchTraces
+    $btnConfirmClean.Text = $L.BtnConfirmClean
     $statusLabel.Text = $L.StatusReady
     $form.Refresh()
 }
@@ -1406,6 +1412,7 @@ function Remove-Un1nst4ll3rJsonAppRecord {
 # 18. Interface Event Bindings
 # ==========================================
 $btnScan.Add_Click({
+        $tracePanel.Visible = $false
         $logTextBox.Visible = $false
         $dataGridView.Visible = $true
     })
@@ -1494,6 +1501,7 @@ $btnUninstall.Add_Click({
             }
 
             # Esconde o Grid e mostra o Painel de Limpeza
+            $btnNewSearchTraces.Visible = $false
             $dataGridView.Visible = $false
             $tracePanel.Visible = $true
             $tracePanel.BringToFront()
@@ -1509,23 +1517,28 @@ $btnUninstall.Add_Click({
 $btnSearchTraces.Add_Click({
         $script:tracesFrom = "SearchTraces"
         # Desabilita o botão e atualiza a UI
-        $btnSearchTraces.Enabled = $false
         $traceListView.Items.Clear()
+        $item = New-Object System.Windows.Forms.ListViewItem("")
+        $item.SubItems.Add($script:LangData.MsgSearchTracesHint)
+        $traceListView.Items.Add($item)
         
         # Esconde o Grid e mostra o Painel de Limpeza
+        $btnNewSearchTraces.Visible = $true
         $dataGridView.Visible = $false
         $tracePanel.Visible = $true
         $tracePanel.BringToFront()
 
-        $traceListView.Items.Add("Varrendo diretórios em busca de vestígios. Aguarde...") | Out-Null
-        [System.Windows.Forms.Application]::DoEvents()
+    })
+
+$btnNewSearchTraces.Add_Click({
+        $btnNewSearchTraces.Enabled = $false
         $traceListView.Items.Clear()
 
         try {
             $resultados = Search-AppTraces
 
             if (-not $resultados -or $resultados.Count -eq 0) {
-                $traceListView.Items.Add("Nenhum vestígio encontrado nas pastas comuns.") | Out-Null
+                $traceListView.Items.Add($script:LangData.MsgNoTracesFound) | Out-Null
             }
             else {
                 # OTIMIZAÇÃO: Criar a fonte e a cor UMA VEZ fora do loop economiza memória
@@ -1540,7 +1553,7 @@ $btnSearchTraces.Add_Click({
                     $item.Tag = $res.Path
                 
                     # ADICIONA O TEXTO "Abrir Pasta" NA NOVA COLUNA
-                    $linkSubItem = $item.SubItems.Add("Abrir Pasta")
+                    $linkSubItem = $item.SubItems.Add($script:LangData.TraceColOpenFolder)
                 
                     # Faz o item usar estilos próprios por subitem
                     $item.UseItemStyleForSubItems = $false
@@ -1555,13 +1568,15 @@ $btnSearchTraces.Add_Click({
             }
         }
         catch {
-            [System.Windows.Forms.MessageBox]::Show("Erro ao varrer vestígios: $($_.Exception.Message)", "Erro", 0, 16)
+            [System.Windows.Forms.MessageBox]::Show(($script:LangData.MsgScanError -f $_.Exception.Message), $script:LangData.TitleError, 0, 16)
+            Write-Un1Log -Category "ERROR" -Message ($script:LangData.MsgScanError -f $_.Exception.Message) -Color "Red"
         }
         finally {
-            $btnSearchTraces.Enabled = $true
+            $btnNewSearchTraces.Enabled = $true
         }
-    })
 
+    })
+    
 # --- Botão CONFIRM CLEAN (Botão grande no rodapé da ListView) ---
 $btnConfirmClean.Add_Click({
 
@@ -1579,13 +1594,13 @@ $btnConfirmClean.Add_Click({
 
         # 2. Se nenhum item for selecionado, avisa e sai
         if ($targetsToClean.Count -eq 0) {
-            [System.Windows.Forms.MessageBox]::Show("Nenhum item foi selecionado.", "Aviso", 0, 48)
+            [System.Windows.Forms.MessageBox]::Show($script:LangData.MsgNothingSelected, $script:LangData.TitleWarning, 0, 48)
             return
         }
 
         # 3. Se um item ou mais forem selecionados, pergunta se deve seguir
-        $mensagem = "Você selecionou $($targetsToClean.Count) item(ns). Deseja seguir com a exclusão dos itens selecionados?"
-        $resultado = [System.Windows.Forms.MessageBox]::Show($mensagem, "Confirmar Exclusão", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+        $mensagem = $script:LangData.MsgConfirmDelete -f $targetsToClean.Count
+        $resultado = [System.Windows.Forms.MessageBox]::Show($mensagem, $script:LangData.TitleConfirmDelete, [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
 
         # 4. Se o usuário clicar em 'Não', sai sem fazer nada
         if ($resultado -ne [System.Windows.Forms.DialogResult]::Yes) {
@@ -1622,7 +1637,7 @@ $btnConfirmClean.Add_Click({
                             # Se ainda existe, houve falha na exclusão. Pintamos de vermelho para avisar o usuário.
                             $item.UseItemStyleForSubItems = $true
                             $item.ForeColor = [System.Drawing.Color]::Red
-                            $item.SubItems[2].Text = "Falha ao Excluir"
+                            $item.SubItems[2].Text = $script:LangData.StatusDeleteFailed
                         }
                     }
                 }
@@ -1695,6 +1710,7 @@ $btnViewLog.Add_Click({
         }
         
         # Toggle View Layer: Hide DataGrid, Reveal RichTextBox Log
+        $tracePanel.Visible = $false
         $dataGridView.Visible = $false
         $logTextBox.Visible = $true
         $statusLabel.Text = $script:LangData.StatusShowingLog
