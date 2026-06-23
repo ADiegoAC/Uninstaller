@@ -1468,14 +1468,15 @@ $btnUninstall.Add_Click({
             $Global:PendingCleanApp = $AppData
             $Global:PendingCleanCache = $cacheData
         
+            $updatedCache = Remove-Un1nst4ll3rJsonAppRecord -CacheData $cacheData -GridRow $dataGridView.CurrentRow
+            Save-Un1nst4ll3rJsonCacheData -Data $updatedCache
+            Load-GridFromJson -Path $script:jsonPath | Out-Null
+
             $traceTargets = Get-Un1nst4ll3rTraceTargets -App $AppData -InstalledApps $cacheData -AppRoot $AppRoot
 
             # NOVO: Se não houver vestígios, atualiza o cache e volta direto para o Grid
             if ($traceTargets.Count -eq 0) {
                 $statusLabel.Text = $script:LangData.StatusUninstalledNoTraces -f $AppData.Nome
-                $updatedCache = Remove-Un1nst4ll3rJsonAppRecord -CacheData $cacheData -GridRow $dataGridView.CurrentRow
-                Save-Un1nst4ll3rJsonCacheData -Data $updatedCache
-                Load-GridFromJson -Path $script:jsonPath | Out-Null
                 return
             }
 
@@ -1652,9 +1653,9 @@ $btnConfirmClean.Add_Click({
             $statusLabel.Text = $script:LangData.StatusUninstallComplete -f $Global:PendingCleanApp.Nome, $cleanedCount
 
             # Atualiza Cache e Grid
-            $updatedCache = Remove-Un1nst4ll3rJsonAppRecord -CacheData $Global:PendingCleanCache -GridRow $dataGridView.CurrentRow
-            Save-Un1nst4ll3rJsonCacheData -Data $updatedCache
-            Load-GridFromJson -Path $script:jsonPath | Out-Null
+            #$updatedCache = Remove-Un1nst4ll3rJsonAppRecord -CacheData $Global:PendingCleanCache -GridRow $dataGridView.CurrentRow
+            #Save-Un1nst4ll3rJsonCacheData -Data $updatedCache
+            #Load-GridFromJson -Path $script:jsonPath | Out-Null
         
             # Volta para o Grid
             $tracePanel.Visible = $false
