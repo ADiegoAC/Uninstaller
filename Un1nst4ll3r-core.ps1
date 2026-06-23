@@ -388,15 +388,40 @@ function Test-Un1nst4ll3rUninstallCompleted {
     ) | Where-Object { ![string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique
 
     foreach ($regPath in $registryTargets) {
-        # NOVA REGRA: Ignora a chave sintética de órfãos durante a verificação
-        # O desinstalador original não sabe que essa chave existe. O motor de limpeza cuidará dela.
-        if ($regPath -like "*\Un1nst4ll3r_Orphan_*") { 
-            continue 
-        }
+        # Ignora a chave sintética de órfãos
+        if ($regPath -like "*\Un1nst4ll3r_Orphan_*") { continue }
 
         if (Test-Path $regPath -ErrorAction SilentlyContinue) {
-            if (-not $Quiet) { Write-Un1Log -Category "VERIFY" -Message "Registry evidence still present: $regPath" -Color Red }
-            return $false
+            
+            # VERIFICA SE A CHAVE ESTÁ VAZIA (VESTÍGIO FANTASMA)
+            $regKey = Get-Item -Path $regPath -ErrorAction SilentlyContinue
+            $hasValidData = $false
+            
+            if ($null -ne $regKey) {
+                # Conta quantas propriedades reais existem na chave
+                $properties = $regKey.Property | Where-Object { $_ -notmatch '^PS' }
+                
+                if ($properties.Count -gt 0) {
+                    # Se tem propriedades, verifica se pelo menos uma tem valor
+                    foreach ($prop in $properties) {
+                        $val = (Get-ItemProperty -Path $regPath -Name $prop -ErrorAction SilentlyContinue).$prop
+                        if (-not [string]::IsNullOrWhiteSpace($val)) {
+                            $hasValidData = $true
+                            break
+                        }
+                    }
+                }
+            }
+
+            # Se a chave tem dados reais, o app realmente ainda está instalado. Aborta!
+            if ($hasValidData) {
+                if (-not $Quiet) { Write-Un1Log -Category "VERIFY" -Message "Registry evidence still present: $regPath" -Color Red }
+                return $false
+            }
+            else {
+                # Se a chave está VAZIA, é um fantasma! Não aborta, deixa a limpeza tratar.
+                if (-not $Quiet) { Write-Un1Log -Category "VERIFY" -Message "Empty registry ghost key found: $regPath. Ignoring for verification." -Color DarkYellow }
+            }
         }
     }
 
