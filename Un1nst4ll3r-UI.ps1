@@ -1919,7 +1919,7 @@ $btnAbout.Add_Click({
 $form.Add_Shown({
         $form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized
         Update-Grid
-        $statusLabel.Text = $script:LangData.StatusReadyClick
+        #$statusLabel.Text = $script:LangData.StatusReadyClick
         $form.WindowState = [System.Windows.Forms.FormWindowState]::Maximized
     })
 

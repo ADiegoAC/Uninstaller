@@ -890,6 +890,25 @@ function Get-Un1nst4ll3rScan {
     $appxPackages = Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { $_.IsFramework -eq $false -and $_.SignatureKind -ne "None" }
     foreach ($app in $appxPackages) {
         if ($app.Name -match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}') { continue }
+
+        # ======================================================================
+        # NOVO FILTRO: Ignora AppX que são apenas extensões de shell/plugins para apps Win32
+        # Exemplos: WinRAR.ShellExtension, NotepadPlusPlus, etc.
+        # ======================================================================
+        $companionAppxPatterns = @('\.ShellExtension$', '\.ContextMenu$', '\.Plugin$', '\.Extension$')
+        $isCompanionAppx = $false
+        foreach ($pattern in $companionAppxPatterns) {
+            if ($app.Name -match $pattern -or $app.PackageFamilyName -match $pattern) {
+                $isCompanionAppx = $true
+                break
+            }
+        }
+        if ($isCompanionAppx) {
+            Write-Un1Log -Category "SCAN" -Message "AppX skipped (Companion/Shell Extension for Win32 app): $($app.Name)" -Color Blue
+            continue
+        }
+        # ======================================================================
+
         try {
             $manifest = $app | Get-AppxPackageManifest -ErrorAction Stop
             #$isHidden = (-not $manifest.Package.Applications.Application.AppListEntry -or $manifest.Package.Applications.Application.AppListEntry -eq "none")
@@ -1344,18 +1363,31 @@ function Get-Un1nst4ll3rDeepSize {
                         continue
                     }
                     $foundDir = Get-ChildItem -Path $basePath -Directory -ErrorAction SilentlyContinue | Where-Object { 
+                        
+                        # 1. PROTEÇÃO PRIMÁRIA: Rejeita pastas do sistema imediatamente
+                        if ($_.FullName -match 'Windows\\System32|Windows\\SysWOW64|Windows\\WinSxS|Windows\\Defender|Windows\\Mail') { 
+                            return $false 
+                        }
+
+                        # 2. Atribuições de variáveis (Agora separadas, sem -and atrapalhando)
                         $fName = $_.Name
                         $fNameNorm = $fName -replace '[\s\-\._]', ''
                         $keyNorm = $firstKeyword -replace '[\s\-\._]', ''
                         
+                        # 3. Lógica de Matches
                         $matchDirect = $fName -like "*$firstKeyword*" -or $fName -like "*$safeAppName*" -or $safeAppName -like "*$fName*"
                         $matchNorm = $fNameNorm -like "*$keyNorm*" -or $keyNorm -like "*$fNameNorm*"
                         
                         $matchWords = $false
-                        if ($appWords.Count -gt 0) { foreach ($word in $appWords) { if ($word.Length -gt 2 -and $fName -like "*$word*") { $matchWords = $true; break } } }
+                        if ($appWords.Count -gt 0) { 
+                            foreach ($word in $appWords) { 
+                                if ($word.Length -gt 2 -and $fName -like "*$word*") { $matchWords = $true; break } 
+                            } 
+                        }
 
+                        # 4. Retorno final do Where-Object
                         $matchDirect -or $matchNorm -or $matchWords
-                    } | Select-Object -First 1
+                    } | Select-Object -First 1                    
                     
                     if ($foundDir) {
                         $leafNorm = $foundDir.Name.ToLower().Replace(" ", "")
@@ -1455,8 +1487,51 @@ function Get-Un1nst4ll3rDeepSize {
         $updatedList.Add($prog) | Out-Null    
     }
 
-    Write-Un1Log -Category "LOCATE" -Message "Deep location discovery complete." -Color Green
-    return $updatedList
+    # ==========================================
+    # DEDUPLICAÇÃO INTELIGENTE: Via UninstallString (A Prova Definitiva)
+    # ==========================================
+    Write-Un1Log -Category "DEDUPE" -Message "Running smart UninstallString deduplication..." -Color Cyan
+    $dedupedList = [System.Collections.ArrayList]::new()
+    $seenUninstallers = @{} # Dicionário: UninstallString Normalizado -> App
+
+    foreach ($prog in $updatedList) {
+        $normUninstall = ""
+        
+        # Normaliza o UninstallString: tira espaços, aspas externas e converte / para \
+        if (![string]::IsNullOrWhiteSpace($prog.UninstallString)) {
+            $normUninstall = $prog.UninstallString.Trim().Trim('"').Replace('/', '\').ToLower()
+        }
+        
+        # Se não tem string de desinstalação, não temos como deduplicar com segurança. Adiciona direto.
+        if ([string]::IsNullOrWhiteSpace($normUninstall)) {
+            [void]$dedupedList.Add($prog)
+            continue
+        }
+
+        if (!$seenUninstallers.ContainsKey($normUninstall)) {
+            # Primeira vez que vemos este comando de desinstalação exato. Guardamos.
+            $seenUninstallers[$normUninstall] = $prog
+            [void]$dedupedList.Add($prog)
+        } else {
+            # JÁ EXISTE! É um clone puro (Ex: os dois Notepad++ apontam pro mesmo uninstall.exe)
+            $existing = $seenUninstallers[$normUninstall]
+            
+            # Qual nome é melhor? Geralmente o mais curto é o nome limpo do app.
+            if ($prog.Nome.Length -lt $existing.Nome.Length) {
+                # O novo é melhor (Ex: "Notepad++ (64-bit)" é melhor que "Notepad++ : a free..."). Troca!
+                [void]$dedupedList.Remove($existing)
+                [void]$dedupedList.Add($prog)
+                $seenUninstallers[$normUninstall] = $prog # Atualiza a referência
+                Write-Un1Log -Category "DEDUPE" -Message "Duplicate replaced: '$($existing.Nome)' -> '$($prog.Nome)'" -Color Yellow
+            } else {
+                # O que já estava na lista é melhor. Rejeita o clone novo.
+                Write-Un1Log -Category "DEDUPE" -Message "Duplicate skipped: '$($prog.Nome)' (Clone of '$($existing.Nome)')" -Color DarkGray
+            }
+        }
+    }
+
+    Write-Un1Log -Category "LOCATE" -Message "Deep location discovery complete. Deduped: $($updatedList.Count) -> $($dedupedList.Count)." -Color Green
+    return $dedupedList
 }
 
 # ==========================================
@@ -1685,6 +1760,8 @@ function Start-Un1nst4ll3rSpinner {
 
             $imgPath = Join-Path $sync.AppRoot "busy.gif" 
             $picBox = $null
+            $script:imgStream = $null # Mantém o stream vivo enquanto o formulário existe
+            
             if (Test-Path $imgPath -ErrorAction SilentlyContinue) {
                 $picBox = New-Object System.Windows.Forms.PictureBox
             
@@ -1695,11 +1772,14 @@ function Start-Un1nst4ll3rSpinner {
                 # Zoom para preencher o tamanho exato definido acima (sem distorcer se a imagem não for quadrada)
                 $picBox.SizeMode = "StretchImage" 
             
-                # Ancoragem: Amarra nos 4 lados. Como o PictureBox é menor que a célula do painel, 
-                # isso fará com que ele fique perfeitamente centralizado dentro do espaço da coluna
+                # Ancoragem...
                 $picBox.Anchor = "Left"
-            
-                $picBox.Image = [System.Drawing.Image]::FromFile($imgPath)
+                
+                # CARREGAMENTO SEGURO: Usa MemoryStream para não lockar o arquivo no disco!
+                $imgBytes = [System.IO.File]::ReadAllBytes($imgPath)
+                $script:imgStream = New-Object System.IO.MemoryStream(,$imgBytes)
+                $picBox.Image = [System.Drawing.Image]::FromStream($script:imgStream)
+                
                 $panel.Controls.Add($picBox, 0, 0) | Out-Null
             }
             else {
