@@ -425,13 +425,45 @@ function Test-Un1nst4ll3rUninstallCompleted {
         }
     }
 
+    # Supondo que você tenha a lista completa dos apps escaneados disponível.
+    # Se não tiver, precisará passá-la como parâmetro para a função de verificação.
+    # Ex: $Global:InstalledPrograms
+
+    # 1. Constrói uma lista de Exes "Protegidos" (pertencem a OUTROS apps instalados)
+    $sharedExes = @()
+    foreach ($otherApp in $Global:InstalledPrograms) {
+        # Ignora o próprio app que estamos verificando (usa Chave ou Nome para comparar)
+        if ($otherApp.Chave -ne $App.Chave -and $otherApp.Nome -ne $App.Nome) {
+            $sharedExes += @($otherApp.ExePath) +
+                        @($otherApp.ExeCandidates) +
+                        @($otherApp.ShortcutTargets)
+        }
+    }
+    # NORMALIZAÇÃO CRÍTICA: Converte tudo para Minúsculas e troca '/' por '\' para a comparação funcionar
+    $sharedExes = $sharedExes | Where-Object { ![string]::IsNullOrWhiteSpace($_) } | 
+                  ForEach-Object { $_.Trim().Replace('/', '\').ToLower() } | 
+                  Sort-Object -Unique
+
+    # 2. Sua lógica original de coleta de candidatos
     $exeCandidates = @(
         @($App.ExeCandidates) +
         @($App.ExePath) +
         @($App.ShortcutTargets)
     ) | Where-Object { ![string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique
 
+    # 3. Verificação com a nova regra de compartilhamento
     foreach ($exePath in $exeCandidates) {
+        
+        # NORMALIZAÇÃO CRÍTICA: Aplica a mesma regra no caminho que estamos testando
+        $normalizedExePath = $exePath.Trim().Replace('/', '\').ToLower()
+
+        # NOVA REGRA: Se o EXE é usado por outro app instalado, não consideramos como "evidência de falha"
+        if ($sharedExes -contains $normalizedExePath) {
+            if (-not $Quiet) { Write-Un1Log -Category "VERIFY" -Message "Shared executable ignored (belongs to another installed app): $exePath" -Color Yellow }
+            continue # Pula para o próximo executável
+        }
+
+        # Regra normal: Se não é compartilhado e ainda existe, aí sim a desinstalação falhou
         if ((Test-Path $exePath -ErrorAction SilentlyContinue) -and $exePath -notmatch 'uninstall|unins\d+|setup') {
             if (-not $Quiet) { Write-Un1Log -Category "VERIFY" -Message "Executable evidence still present: $exePath" -Color Red }
             return $false
@@ -980,29 +1012,37 @@ function Get-Un1nst4ll3rTraceTargets {
             continue
         }
 
-        if (Test-Path $path) {
-            $isShared = $false
-            $normalizedPath = $path.TrimEnd('\').ToLower()
+            if (Test-Path $path) {
+                $isShared = $false
+                # NORMALIZAÇÃO: Garante padrão Windows (C:\pasta) e Minúsculas para comparação segura
+                $normalizedPath = $path.TrimEnd('\/').Replace('/', '\').ToLower()
 
-            foreach ($other in $InstalledApps) {
-                if ($other.Nome -eq $App.Nome -and $other.Chave -eq $App.Chave) { continue }
-                $otherLocal = $other.Local
-                if ([string]::IsNullOrWhiteSpace($otherLocal)) { continue }
-                $normalizedOther = $otherLocal.TrimEnd('\').ToLower()
+                foreach ($other in $InstalledApps) {
+                    if ($other.Nome -eq $App.Nome -and $other.Chave -eq $App.Chave) { continue }
+                    $otherLocal = $other.Local
+                    if ([string]::IsNullOrWhiteSpace($otherLocal)) { continue }
+                    
+                    # NORMALIZAÇÃO no caminho do outro app também
+                    $normalizedOther = $otherLocal.TrimEnd('\/').Replace('/', '\').ToLower()
 
-                if ($normalizedOther.StartsWith("$normalizedPath\") -or $normalizedOther -eq $normalizedPath) {
-                    $isShared = $true
-                    break
+                    # VERIFICAÇÃO DE SOBREPOSIÇÃO BIDIRECIONAL:
+                    # 1. A pasta do outro app está DENTRO da pasta que queremos deletar? (Ex: Deletar "C:\Riot Games", Outro app é "C:\Riot Games\Riot Client")
+                    # 2. A pasta que queremos deletar está DENTRO da pasta do outro app? (Ex: Deletar "C:\Riot Games\Riot Client", Outro app é "C:\Riot Games")
+                    # 3. Elas são exatamente a mesma pasta?
+                    if ($normalizedOther.StartsWith("$normalizedPath\") -or $normalizedPath.StartsWith("$normalizedOther\") -or $normalizedOther -eq $normalizedPath) {
+                        $isShared = $true
+                        Write-Un1Log -Category "TRACE-FIND" -Message "Diretório compartilhado detectado: $path (Conflita com: $($other.Nome))" -Color Yellow
+                        break
+                    }
+                }
+
+                if ($isShared) {
+                    & $addTarget "Pasta" $path $true "Compartilhado (Outro App)"
+                }
+                else {
+                    & $addTarget "Pasta" $path $false "OK"
                 }
             }
-
-            if ($isShared) {
-                & $addTarget "Pasta" $path $true "Compartilhado (Outro App)"
-            }
-            else {
-                & $addTarget "Pasta" $path $false "OK"
-            }
-        }
     }
 
     Write-Un1Log -Category "TRACE-FIND" -Message "Found $($targets.Count) residual traces." -Color Green

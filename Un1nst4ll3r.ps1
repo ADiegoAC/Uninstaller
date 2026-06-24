@@ -229,12 +229,18 @@ function Get-Un1nst4ll3rMuiCache {
                     if ($propName -match '^(.+\.exe)\.FriendlyAppName$') {
                         $exePath = $Matches[1]
                         
+                        # Cria um objeto estruturado em vez de salvar apenas a string
+                        $newEntry = [PSCustomObject]@{
+                            ExePath    = $exePath
+                            RegKeyName = $propName # Guardamos também de onde veio
+                        }
+
                         # Prioriza caminhos do Program Files se houver duplicatas
                         if (!$muiCache.ContainsKey($friendlyName)) {
-                            $muiCache[$friendlyName] = $exePath
+                            $muiCache[$friendlyName] = $newEntry
                         }
-                        elseif ($exePath -match 'Program Files' -and $muiCache[$friendlyName] -notmatch 'Program Files') {
-                            $muiCache[$friendlyName] = $exePath
+                        elseif ($exePath -match 'Program Files' -and $muiCache[$friendlyName] -is [string] -or ($muiCache[$friendlyName].ExePath -notmatch 'Program Files')) {
+                            $muiCache[$friendlyName] = $newEntry
                         }
                     }
                 }
@@ -551,12 +557,11 @@ function Find-Un1nst4ll3rOrphans {
         
         $installDir = Split-Path $exePath
         
-        # DEDUPLICAÇÃO POR NOME (VALIDAÇÃO FUZZY)
+        # DEDUPLICAÇÃO POR NOME (VALIDAÇÃO FUZZY INTELIGENTE)
         $isAlreadyMappedByName = $false
         foreach ($known in $knownNames) {
             if ([string]::IsNullOrWhiteSpace($known)) { continue }
-            # Se um nome contém o outro (ex: "Notepad++" está dentro de "Notepad++ a free..."), pula!
-            if ($muiName -like "*$known*" -or $known -like "*$muiName*") {
+            if (Test-Un1nst4ll3rNameMatch -Name1 $muiName -Name2 $known) {
                 $isAlreadyMappedByName = $true
                 break
             }
@@ -760,6 +765,42 @@ function Register-Un1nst4ll3rOrphanToRegistry {
         Write-Un1Log -Category "ORPHAN" -Message "Failed to inject registry entry for $($App.Nome): $_" -Color DarkRed
     }
 }
+
+# ==========================================
+# BLOCO AUXILIAR: Deduplicação de nomes
+# ==========================================
+function Test-Un1nst4ll3rNameMatch {
+    param (
+        [string]$Name1,
+        [string]$Name2
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Name1) -or [string]::IsNullOrWhiteSpace($Name2)) { return $false }
+    
+    # Match exato ignora tudo e retorna verdadeiro
+    if ($Name1 -eq $Name2) { return $true }
+
+    # REGRA 1: Nomes curtos (menos de 5 letras) são perigosos no Fuzzy. Exija match exato.
+    # Evita que "App" case com "Apple" ou "GPU" caso com "GPU-Z".
+    if ($Name1.Length -lt 5 -or $Name2.Length -lt 5) { return $false }
+
+    # REGRA 2: Se um contém o outro, verifica a diferença de tamanho.
+    # Evita que "Notepad++" case com "Notepad++ a free (GPL) source code editor" por ser muito diferente.
+    if ($Name1 -like "*$Name2*" -or $Name2 -like "*$Name1*") {
+        $lenDiff = [Math]::Abs($Name1.Length - $Name2.Length)
+        $minLen = [Math]::Min($Name1.Length, $Name2.Length)
+        
+        # Se a diferença de tamanho for maior que 40% do tamanho da menor palavra, rejeitamos.
+        # Ex: "Notepad" (7) e "Notepad++" (9). Diferença 2. 2/7 = 28% (Aceita!)
+        # Ex: "App" (3) e "Apple Application" (17). Já barrado na Regra 1, mas se fosse "Steam" (5) e "Steam Cleanup Utility" (21). Diff 16. 16/5 = 320% (Rejeita!)
+        if (($lenDiff / $minLen) -le 0.4) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
 
 # ==========================================
 # BLOCO 1: Raw Registry & AppX Scan
@@ -1028,12 +1069,12 @@ function Get-Un1nst4ll3rDeepSize {
             # Tenta casar primeiro o nome exato
             $muiEntry = $Global:MemoryMuiCache[$prog.Nome]
             
-            # Se não achou exato, tenta casar pelo nome limpo (sem versão)
+            # Se não achou exato, tenta casar pelo nome limpo usando FUZZY MATCH SEGURO
             if (!$muiEntry) {
                 $safeAppName = $prog.Nome -replace '\(.*\)', '' -replace '\s+\d+.*', '' -replace '[^\w\s\-+]', ''
                 $safeAppName = $safeAppName.Trim()
                 if (![string]::IsNullOrWhiteSpace($safeAppName)) {
-                    $matchKey = $Global:MemoryMuiCache.Keys | Where-Object { $_ -like "*$safeAppName*" -or $safeAppName -like "*$_*" } | Select-Object -First 1
+                    $matchKey = $Global:MemoryMuiCache.Keys | Where-Object { Test-Un1nst4ll3rNameMatch -Name1 $_ -Name2 $safeAppName } | Select-Object -First 1
                     if ($matchKey) { $muiEntry = $Global:MemoryMuiCache[$matchKey] }
                 }
             }
@@ -1268,7 +1309,13 @@ function Get-Un1nst4ll3rDeepSize {
             ) | Select-Object -Unique
             
             $safeAppName = $prog.Nome -replace '\(.*\)', '' -replace '\s+\d+.*', '' -replace '[^\w\s\-+]', ''
-            $genericWords = @("microsoft", "corporation", "inc", "ltda", "the", "launcher", "update", "service", "framework", "runtime", "helper", "system", "visual", "net", "windows", "driver", "redistributable", "c++")
+            $genericWords = @(
+                "microsoft", "corporation", "inc", "ltda", "the", "launcher", "update", "service", 
+                "framework", "runtime", "helper", "system", "visual", "net", "windows", "driver", 
+                "redistributable", "c++", "tools", "health", "core", "assistant", "diagnostics", 
+                "agent", "setup", "client", "browser", "plugin", "extension", "component", "module",
+                "chart", "studio", "report", "browser", "prerequisites", "software", "entity"
+            )
             $appWords = @($safeAppName -split '\s+' | Where-Object { $_ -notin $genericWords -and $_.Length -gt 1 })
             $firstKeyword = if ($appWords.Count -gt 0) { $appWords[0] } else { "" }
 
@@ -1290,6 +1337,12 @@ function Get-Un1nst4ll3rDeepSize {
             if (![string]::IsNullOrWhiteSpace($firstKeyword) -and $firstKeyword.Length -ge 4) {
                 foreach ($basePath in $commonPaths) {
                     if (!(Test-Path $basePath)) { continue }
+                    # PROTEÇÃO EXTRA: Se a base for AppData, só procura se tiver uma palavra muito específica (>5 letras)
+                    $isAppData = $basePath -match 'AppData'
+                    if ($isAppData -and $firstKeyword.Length -lt 5) {
+                        Write-Un1Log -Category "LOCATE" -Message "Disk Heuristic skipped AppData: Keyword '$firstKeyword' is too generic for this path." -Color Blue
+                        continue
+                    }
                     $foundDir = Get-ChildItem -Path $basePath -Directory -ErrorAction SilentlyContinue | Where-Object { 
                         $fName = $_.Name
                         $fNameNorm = $fName -replace '[\s\-\._]', ''
@@ -1537,16 +1590,26 @@ function Get-Un1nst4ll3rSizeEngine {
 
             if ($isSafeToMeasure) {
                 try {
-                    Write-Un1Log -Category "SIZE" -Message "Measuring disk size (Safe I/O): $($prog.Local)" -Color Blue
-                    $bytes = (Get-ChildItem -Path $prog.Local -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
-                    if ($bytes -gt 0) { 
-                        $prog.Tamanho = [long]$bytes 
-                        $sizeFriendly = if ($prog.Tamanho -ge 1GB) { "{0:N2} GB" -f ($prog.Tamanho / 1GB) } else { "{0:N2} MB" -f ($prog.Tamanho / 1MB) }
-                        Write-Un1Log -Category "SIZE" -Message "Disk size calculated: $sizeFriendly for $($prog.Nome)" -Color Green
+                    Write-Un1Log -Category "SIZE" -Message "Measuring disk size (Robocopy Engine): $($prog.Local)" -Color Blue
+                    
+                    # /L = Apenas lista (não copia), /S = Subpastas, /NFL = Sem lista de arquivos
+                    # /NDL = Sem lista de pastas, /NJH = Sem cabeçalho, /BYTES = Tamanho em bytes
+                    $roboOutput = robocopy $prog.Local "C:\DUMMY_VOID_PATH_UN1NST4LL3R" /L /S /NFL /NDL /NJH /BYTES 2>$null
+                    
+                    # O Robocopy gera uma linha de resumo no final. Ex: "       Bytes :  1234567890"
+                    $bytesLine = $roboOutput | Select-String -Pattern "Bytes\s*:\s*(\d+)" | Select-Object -Last 1
+                    
+                    if ($bytesLine -and $bytesLine.Matches.Groups[1].Success) {
+                        $bytes = [long]$bytesLine.Matches.Groups[1].Value
+                        if ($bytes -gt 0) { 
+                            $prog.Tamanho = $bytes 
+                            $sizeFriendly = if ($prog.Tamanho -ge 1GB) { "{0:N2} GB" -f ($prog.Tamanho / 1GB) } else { "{0:N2} MB" -f ($prog.Tamanho / 1MB) }
+                            Write-Un1Log -Category "SIZE" -Message "Disk size calculated: $sizeFriendly for $($prog.Nome)" -Color Green
+                        }
                     }
                 }
                 catch {
-                    Write-Un1Log -Category "SIZE" -Message "I/O Error measuring: $($prog.Local)" -Color DarkRed
+                    Write-Un1Log -Category "SIZE" -Message "Robocopy error measuring: $($prog.Local)" -Color DarkRed
                 }
             }
             else {

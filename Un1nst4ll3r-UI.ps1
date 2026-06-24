@@ -881,14 +881,34 @@ $dataGridView.Columns["Local"].MinimumWidth = 200
 # Context Menu and Right-Click Selection
 # ============================================================================
 $script:contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
-$script:menuOpenFolder = New-Object System.Windows.Forms.ToolStripMenuItem
-$script:menuOpenFolder.Name = "menuOpenFolder"
-$script:menuOpenFolder.Text = $script:LangData.MenuOpenFolder
-$script:menuOpenFolder.Add_Click({
+ $script:menuOpenFolder = New-Object System.Windows.Forms.ToolStripMenuItem
+ $script:menuOpenFolder.Name = "menuOpenFolder"
+ $script:menuOpenFolder.Text = $script:LangData.MenuOpenFolder
+ $script:menuOpenFolder.Add_Click({
         if ($dataGridView.CurrentRow) {
-            $path = $dataGridView.CurrentRow.Cells["Local"].Value
-            if (![string]::IsNullOrWhiteSpace($path) -and (Test-Path $path)) {
-                Start-Process "explorer.exe" -ArgumentList "`"$path`""
+            # 1. Garante que é uma string e remove espaços invisíveis
+            $rawPath = if ($dataGridView.CurrentRow.Cells["Local"].Value) { $dataGridView.CurrentRow.Cells["Local"].Value.ToString().Trim() } else { "" }
+            
+            if (![string]::IsNullOrWhiteSpace($rawPath)) {
+                
+                # 2. HIGIENIZAÇÃO: Troca '/' por '\' (O Explorer não aceita '/' em argumentos de linha de comando)
+                $cleanPath = $rawPath -replace '/', '\'
+                
+                # 3. HIGIENIZAÇÃO: Remove a barra no final, se houver (Ex: "C:\Riot\" vira "C:\Riot")
+                $cleanPath = $cleanPath.TrimEnd('\')
+                
+                # 4. Verifica se o caminho limpo realmente existe
+                if (Test-Path -LiteralPath $cleanPath -PathType Container) {
+                    
+                    # 5. Abre a pasta. Usar Invoke-Item é mais seguro no PowerShell do que Start-Process explorer.exe
+                    # mas se preferir o explorer, a linha abaixo também funciona com o $cleanPath:
+                    # Start-Process "explorer.exe" -ArgumentList "`"$cleanPath`""
+                    
+                    Invoke-Item -LiteralPath $cleanPath
+                }
+                else {
+                    [System.Windows.Forms.MessageBox]::Show("A pasta de instalação não existe ou não pode ser acessada.`nCaminho: $cleanPath", "Pasta Não Encontrada", "OK", "Warning")
+                }
             }
         }
     })
@@ -1472,7 +1492,7 @@ $btnUninstall.Add_Click({
             Save-Un1nst4ll3rJsonCacheData -Data $updatedCache
             Load-GridFromJson -Path $script:jsonPath | Out-Null
 
-            $traceTargets = Get-Un1nst4ll3rTraceTargets -App $AppData -InstalledApps $cacheData -AppRoot $AppRoot
+            $traceTargets = Get-Un1nst4ll3rTraceTargets -App $AppData -InstalledApps $updatedCache -AppRoot $AppRoot
 
             # NOVO: Se não houver vestígios, atualiza o cache e volta direto para o Grid
             if ($traceTargets.Count -eq 0) {
