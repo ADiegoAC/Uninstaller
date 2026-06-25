@@ -1,4 +1,4 @@
-﻿# ======================================================================
+# ======================================================================
 #  Un1nst4ll3r - Graphical User Interface
 #  Version: 2.2.0
 # ======================================================================
@@ -33,7 +33,10 @@ if ($exeName -match '^(pwsh|powershell|powershell_ise|WindowsTerminal)$') {
 }
 else {
     # Compiled as an EXE (Gets the folder where the .exe is actually located)
-    $AppRoot = [System.IO.Path]::GetDirectoryName($exePath)
+    #$AppRoot = [System.IO.Path]::GetDirectoryName($exePath)
+
+    # Bundle extrai em %TEMP%\Un1nst4ll3r\, não na pasta do .exe
+    $AppRoot = Join-Path $env:TEMP 'Un1nst4ll3r'
 }
 
 # ==========================================
