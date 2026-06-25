@@ -899,7 +899,6 @@ function Start-Un1nst4ll3rApp {
     return $false
 }
 
-
 # ==========================================
 # BLOCO 6.A: Motor de Descoberta de Vestígios (Apenas lista, não apaga)
 # ==========================================
@@ -927,7 +926,7 @@ function Get-Un1nst4ll3rTraceTargets {
             })
     }
 
-    # 1. Registro
+    # 1. Registro Padrão (Chave de desinstalação)
     $regPaths = @(
         @($App.CleanupRegistryTargets) +
         @(
@@ -952,7 +951,7 @@ function Get-Un1nst4ll3rTraceTargets {
     }
 
     # ======================================================================
-    # NOVO: 2.5 Busca Profunda no Registro (Sanitizando o Nome)
+    # 2.5 Busca Profunda no Registro (Sanitizando o Nome E Protegendo Outros Apps)
     # ======================================================================
     $sanitizedApp = Get-Un1nst4ll3rSanitizedName -RawName $App.Nome
     Write-Un1Log -Category "TRACE-FIND" -Message "Sanitized app name for deep search: '$sanitizedApp' (Original: '$($App.Nome)')" -Color Blue
@@ -975,10 +974,39 @@ function Get-Un1nst4ll3rTraceTargets {
             
             $cleanNormPath = $normPath.TrimEnd('\').ToLower()
             
-            # Se a chave não estiver já na lista, adiciona como vestígio
+            # Se a chave não estiver já na lista, avalia se é compartilhada
             if ($existingRegs -notcontains $cleanNormPath) {
                 if ($normPath -ne "HKLM:\SOFTWARE" -and $normPath -ne "HKCU:\SOFTWARE") {
-                    & $addTarget "Registro" $normPath $false "Deep Match ($($trace.Nome))"
+                    
+                    $isSharedReg = $false
+                    
+                    # NOVA PROTEÇÃO: Verifica se o vestígio pertence a OUTRO app instalado
+                    foreach ($other in $InstalledApps) {
+                        if ($other.Nome -eq $App.Nome -and $other.Chave -eq $App.Chave) { continue }
+                        
+                        # Sanitiza o nome do outro app
+                        $otherSanitized = Get-Un1nst4ll3rSanitizedName -RawName $other.Nome
+                        if (![string]::IsNullOrWhiteSpace($otherSanitized) -and $otherSanitized.Length -ge 3) {
+                            # Se o caminho do registro conter o nome do outro app (ex: "Antigravity IDE"), protege!
+                            if ($normPath -match [regex]::Escape($otherSanitized)) {
+                                $isSharedReg = $true
+                                break
+                            }
+                        }
+                        
+                        # Protege também a chave de desinstalação do outro app
+                        if (![string]::IsNullOrWhiteSpace($other.Chave) -and $normPath -match [regex]::Escape($other.Chave)) {
+                            $isSharedReg = $true
+                            break
+                        }
+                    }
+
+                    if ($isSharedReg) {
+                        Write-Un1Log -Category "TRACE-FIND" -Message "Registro compartilhado detectado (Deep Search): $normPath" -Color Yellow
+                        & $addTarget "Registro" $normPath $true "Compartilhado (Outro App)"
+                    } else {
+                        & $addTarget "Registro" $normPath $false "Deep Match ($($trace.Nome))"
+                    }
                 }
             }
         }
@@ -1012,37 +1040,32 @@ function Get-Un1nst4ll3rTraceTargets {
             continue
         }
 
-            if (Test-Path $path) {
-                $isShared = $false
-                # NORMALIZAÇÃO: Garante padrão Windows (C:\pasta) e Minúsculas para comparação segura
-                $normalizedPath = $path.TrimEnd('\/').Replace('/', '\').ToLower()
+        if (Test-Path $path) {
+            $isShared = $false
+            $normalizedPath = $path.TrimEnd('\/').Replace('/', '\').ToLower()
 
-                foreach ($other in $InstalledApps) {
-                    if ($other.Nome -eq $App.Nome -and $other.Chave -eq $App.Chave) { continue }
-                    $otherLocal = $other.Local
-                    if ([string]::IsNullOrWhiteSpace($otherLocal)) { continue }
-                    
-                    # NORMALIZAÇÃO no caminho do outro app também
-                    $normalizedOther = $otherLocal.TrimEnd('\/').Replace('/', '\').ToLower()
+            foreach ($other in $InstalledApps) {
+                if ($other.Nome -eq $App.Nome -and $other.Chave -eq $App.Chave) { continue }
+                $otherLocal = $other.Local
+                if ([string]::IsNullOrWhiteSpace($otherLocal)) { continue }
+                
+                $normalizedOther = $otherLocal.TrimEnd('\/').Replace('/', '\').ToLower()
 
-                    # VERIFICAÇÃO DE SOBREPOSIÇÃO BIDIRECIONAL:
-                    # 1. A pasta do outro app está DENTRO da pasta que queremos deletar? (Ex: Deletar "C:\Riot Games", Outro app é "C:\Riot Games\Riot Client")
-                    # 2. A pasta que queremos deletar está DENTRO da pasta do outro app? (Ex: Deletar "C:\Riot Games\Riot Client", Outro app é "C:\Riot Games")
-                    # 3. Elas são exatamente a mesma pasta?
-                    if ($normalizedOther.StartsWith("$normalizedPath\") -or $normalizedPath.StartsWith("$normalizedOther\") -or $normalizedOther -eq $normalizedPath) {
-                        $isShared = $true
-                        Write-Un1Log -Category "TRACE-FIND" -Message "Diretório compartilhado detectado: $path (Conflita com: $($other.Nome))" -Color Yellow
-                        break
-                    }
-                }
-
-                if ($isShared) {
-                    & $addTarget "Pasta" $path $true "Compartilhado (Outro App)"
-                }
-                else {
-                    & $addTarget "Pasta" $path $false "OK"
+                # VERIFICAÇÃO DE SOBREPOSIÇÃO BIDIRECIONAL
+                if ($normalizedOther.StartsWith("$normalizedPath\") -or $normalizedPath.StartsWith("$normalizedOther\") -or $normalizedOther -eq $normalizedPath) {
+                    $isShared = $true
+                    Write-Un1Log -Category "TRACE-FIND" -Message "Diretório compartilhado detectado: $path (Conflita com: $($other.Nome))" -Color Yellow
+                    break
                 }
             }
+
+            if ($isShared) {
+                & $addTarget "Pasta" $path $true "Compartilhado (Outro App)"
+            }
+            else {
+                & $addTarget "Pasta" $path $false "OK"
+            }
+        }
     }
 
     Write-Un1Log -Category "TRACE-FIND" -Message "Found $($targets.Count) residual traces." -Color Green

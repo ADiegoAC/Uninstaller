@@ -1416,45 +1416,124 @@ function Get-Un1nst4ll3rDeepSize {
     }
 
     # ==========================================
-    # DEDUPLICAÇÃO INTELIGENTE: Via UninstallString (A Prova Definitiva)
+    # DEDUPLICAÇÃO INTELIGENTE: Multi-Fator Avançada
     # ==========================================
-    Write-Un1Log -Category "DEDUPE" -Message "Running smart UninstallString deduplication..." -Color Cyan
+    Write-Un1Log -Category "DEDUPE" -Message "Running smart multi-factor deduplication..." -Color Cyan
     $dedupedList = [System.Collections.ArrayList]::new()
-    $seenUninstallers = @{} # Dicionário: UninstallString Normalizado -> App
+
+    # Helper local para extrair o EXE base, parâmetros e saber se é MSI
+    $getUninstallerProps = {
+        param($uStr)
+        if ([string]::IsNullOrWhiteSpace($uStr)) { return @{ Base = ""; HasParams = $false; IsMsi = $false; Exact = "" } }
+        $clean = $uStr.Trim()
+        if ($clean -match 'msiexec') { return @{ Base = $clean.ToLower(); HasParams = $true; IsMsi = $true; Exact = $clean.ToLower() } }
+        
+        $base = ""
+        $cleanNoQuotes = $clean -replace '\"', '' -replace "'", ""
+        if ($cleanNoQuotes -match '^(.*?\.exe)') { $base = $Matches[1].Trim().ToLower() }
+        
+        $hasParams = $false
+        if ($base -and $cleanNoQuotes.Length -gt $base.Length) { $hasParams = $true }
+        
+        return @{ Base = $base; HasParams = $hasParams; IsMsi = $false; Exact = $cleanNoQuotes.ToLower() }
+    }
 
     foreach ($prog in $updatedList) {
-        $normUninstall = ""
-        
-        # Normaliza o UninstallString: tira espaços, aspas externas e converte / para \
-        if (![string]::IsNullOrWhiteSpace($prog.UninstallString)) {
-            $normUninstall = $prog.UninstallString.Trim().Trim('"').Replace('/', '\').ToLower()
-        }
-        
-        # Se não tem string de desinstalação, não temos como deduplicar com segurança. Adiciona direto.
-        if ([string]::IsNullOrWhiteSpace($normUninstall)) {
-            [void]$dedupedList.Add($prog)
-            continue
+        $isDuplicate = $false
+        $existing = $null
+
+        $pUninst = & $getUninstallerProps $prog.UninstallString
+        $pIcon = if ($prog.DisplayIcon) { ($prog.DisplayIcon -replace ',\d+$' -replace '\"', '').Trim().ToLower() } else { "" }
+        $pPath = if ($prog.Local) { $prog.Local.TrimEnd('\').TrimEnd('/').ToLower() } else { "" }
+
+        foreach ($seen in $dedupedList) {
+            $sUninst = & $getUninstallerProps $seen.UninstallString
+            $sIcon = if ($seen.DisplayIcon) { ($seen.DisplayIcon -replace ',\d+$' -replace '\"', '').Trim().ToLower() } else { "" }
+            $sPath = if ($seen.Local) { $seen.Local.TrimEnd('\').TrimEnd('/').ToLower() } else { "" }
+
+            $score = 0
+
+            # 1. Uninstaller (A Prova Mais Forte)
+            if ($pUninst.IsMsi -or $sUninst.IsMsi) {
+                if ($pUninst.Exact -eq $sUninst.Exact) { $score += 5 }
+            } elseif (![string]::IsNullOrWhiteSpace($pUninst.Base) -and $pUninst.Base -eq $sUninst.Base) {
+                # O EXE base do desinstalador é idêntico (ex: uninstall.exe)
+                $score += 3
+                
+                # Penalidade se os parâmetros forem diferentes (Pode ser um Hub/Launcher)
+                if ($pUninst.HasParams -ne $sUninst.HasParams -or $pUninst.Exact -ne $sUninst.Exact) {
+                    $score -= 2
+                }
+            }
+
+            # 2. InstallLocation
+            if (![string]::IsNullOrWhiteSpace($pPath) -and $pPath -eq $sPath) {
+                # Ignora pastas nativas do Windows, pois abrigam muitos apps diferentes
+                if ($pPath -notmatch 'system32|syswow64|^c:\\windows$') {
+                    $score += 2
+                }
+            }
+
+            # 3. DisplayIcon
+            if (![string]::IsNullOrWhiteSpace($pIcon) -and $pIcon -eq $sIcon) {
+                # Ignora ícones genéricos do Windows
+                if ($pIcon -notmatch 'shell32|imageres|msiexec|system32|syswow64') {
+                    $score += 2
+                }
+            }
+
+            # 4. Tamanho (Similaridade)
+            if ($prog.Tamanho -gt 0 -and $seen.Tamanho -gt 0) {
+                $sizeDiff = [Math]::Abs($prog.Tamanho - $seen.Tamanho)
+                $maxSize = [Math]::Max($prog.Tamanho, $seen.Tamanho)
+                if (($sizeDiff / $maxSize) -le 0.01 -or $sizeDiff -le 10485760) {
+                    $score += 1
+                }
+            }
+
+            # Limiar de Decisão: Exige no mínimo 5 pontos para ser considerado clone
+            if ($score -ge 5) {
+                $isDuplicate = $true
+                $existing = $seen
+                break
+            }
         }
 
-        if (!$seenUninstallers.ContainsKey($normUninstall)) {
-            # Primeira vez que vemos este comando de desinstalação exato. Guardamos.
-            $seenUninstallers[$normUninstall] = $prog
-            [void]$dedupedList.Add($prog)
-        } else {
-            # JÁ EXISTE! É um clone puro (Ex: os dois Notepad++ apontam pro mesmo uninstall.exe)
-            $existing = $seenUninstallers[$normUninstall]
+        if ($isDuplicate) {
+            # Decisão de quem fica (Rei vs Órfão vs Parâmetros)
+            $keepNew = $false
             
-            # Qual nome é melhor? Geralmente o mais curto é o nome limpo do app.
-            if ($prog.Nome.Length -lt $existing.Nome.Length) {
-                # O novo é melhor (Ex: "Notepad++ (64-bit)" é melhor que "Notepad++ : a free..."). Troca!
+            # Regra 1: O atual é Real (Registro) e o antigo é Órfão -> Novo vence
+            if ($prog.Chave -notmatch '^Un1nst4ll3r_Orphan_' -and $existing.Chave -match '^Un1nst4ll3r_Orphan_') {
+                $keepNew = $true
+            } 
+            # Regra 2: O atual é Órfão e o antigo é Real -> Antigo vence
+            elseif ($prog.Chave -match '^Un1nst4ll3r_Orphan_' -and $existing.Chave -notmatch '^Un1nst4ll3r_Orphan_') {
+                $keepNew = $false
+            } 
+            # Regra 3: Ambos na mesma categoria. Quem tem parâmetros vence (é mais específico)
+            elseif ($pUninst.HasParams -and !$sUninst.HasParams) {
+                $keepNew = $true
+            }
+            elseif (!$pUninst.HasParams -and $sUninst.HasParams) {
+                $keepNew = $false
+            }
+            # Regra 4: Mesmo status de parâmetros. Nome mais curto vence.
+            elseif ($prog.Nome.Length -lt $existing.Nome.Length) {
+                $keepNew = $true
+            } else {
+                $keepNew = $false
+            }
+
+            if ($keepNew) {
                 [void]$dedupedList.Remove($existing)
                 [void]$dedupedList.Add($prog)
-                $seenUninstallers[$normUninstall] = $prog # Atualiza a referência
-                Write-Un1Log -Category "DEDUPE" -Message "Duplicate replaced: '$($existing.Nome)' -> '$($prog.Nome)'" -Color Yellow
+                Write-Un1Log -Category "DEDUPE" -Message "Duplicate replaced: '$($existing.Nome)' -> '$($prog.Nome)' (Score: $score)" -Color Yellow
             } else {
-                # O que já estava na lista é melhor. Rejeita o clone novo.
-                Write-Un1Log -Category "DEDUPE" -Message "Duplicate skipped: '$($prog.Nome)' (Clone of '$($existing.Nome)')" -Color DarkGray
+                Write-Un1Log -Category "DEDUPE" -Message "Duplicate skipped: '$($prog.Nome)' (Clone of '$($existing.Nome)', Score: $score)" -Color DarkGray
             }
+        } else {
+            [void]$dedupedList.Add($prog)
         }
     }
 
