@@ -1,6 +1,6 @@
 ﻿# ======================================================================
 #  Un1nst4ll3r - Motor de Varredura (Módulo)
-#  Versão: 3.1.1
+#  Versão: 3.4.1
 # ======================================================================
 
 # Força o terminal do Windows a usar UTF-8 para exibir acentos corretamente no console

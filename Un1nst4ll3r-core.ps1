@@ -1,6 +1,6 @@
 ﻿# ======================================================================
 #  Un1nst4ll3r-core.ps1 - Motor de Desinstalação e Limpeza (Ação)
-#  Versão: 1.0
+#  Versão: 0.4.1
 # ======================================================================
 
 # Inicializa o acumulador global de logs (Independente da UI)
