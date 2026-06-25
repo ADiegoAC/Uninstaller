@@ -1081,8 +1081,69 @@ function Get-Un1nst4ll3rDeepSize {
         $guessedPath = $null
         $exeFromShortcut = $null
 
-        # ── PRIORIDADE 2: MuiCache (FriendlyAppName -> ExePath) ──
-        # O Windows mapeia o nome do app para o EXE que já rodou. Fonte muito rica, mas requer validação.
+        # ── PRIORIDADE 2: Registry Local (InstallLocation) ──
+        if (!$guessedPath -and ![string]::IsNullOrWhiteSpace($prog.Local) -and (Test-Path $prog.Local)) {
+            $guessedPath = $prog.Local
+            if ([string]::IsNullOrWhiteSpace($prog.RootSource)) { $prog.RootSource = "Registry.InstallLocation" }
+            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Registry.InstallLocation"
+            Write-Un1Log -Category "LOCATE" -Message "Local already provided by Registry: $guessedPath" -Color Green
+        }
+
+        # ── PRIORIDADE 3: DisplayIcon from Reg -> ExePath ──
+        if (!$guessedPath -and !$exeFromShortcut -and ![string]::IsNullOrWhiteSpace($prog.DisplayIcon)) {
+            $cleanIcon = $prog.DisplayIcon -replace '\"', '' -replace ',\d+$', ''
+            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "IconCandidates" -Value $cleanIcon
+            if ((Test-Path $cleanIcon -ErrorAction SilentlyContinue) -and $cleanIcon -notmatch 'Package Cache|Windows\\Installer|shell32|imageres|Windows\\SysWOW64|Windows\\System32') {
+                $dir = Split-Path -Path $cleanIcon -ErrorAction SilentlyContinue
+                if ($dir -and (Test-Path $dir -ErrorAction SilentlyContinue)) {
+                    $guessedPath = $dir
+                    $prog.RootSource = "Registry.DisplayIcon"
+                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Registry.DisplayIcon"
+                    # Corrige o vírus: Se o MuiCache achou um exe errado antes, o DisplayIcon sobrescreve agora.
+                    if ($cleanIcon -match '\.exe$') { $exeFromShortcut = $cleanIcon }
+                    Write-Un1Log -Category "LOCATE" -Message "Local found via DisplayIcon: $guessedPath" -Color Green
+                }
+            }
+        }
+
+        # ── PRIORIDADE 4: UnistallString from Reg -> ExePath ──
+        if (!$guessedPath -and ![string]::IsNullOrWhiteSpace($prog.UninstallString)) {
+            $cacheKeyword = $null
+            if ($prog.UninstallString -match 'Package Cache\\.*\\(.+?)\.exe') { $cacheKeyword = ($Matches[1] -split '-')[0] }
+            if ($prog.UninstallString -match "msiexec" -and $prog.UninstallString -match '\{([A-Fa-f0-9\-]+)\}') {
+                $msiGuid = $Matches[1]
+                try {
+                    $installer = New-Object -ComObject WindowsInstaller.Installer
+                    $msiLocation = $installer.ProductInfo("{$msiGuid}", "InstallLocation")
+                    if (![string]::IsNullOrWhiteSpace($msiLocation) -and (Test-Path $msiLocation) -and $msiLocation -notmatch 'Package Cache|Windows\\TEMP|IXP') { $guessedPath = $msiLocation.TrimEnd('\') }
+                    if (!$guessedPath) {
+                        $msiSource = $installer.ProductInfo("{$msiGuid}", "InstallSource")
+                        if (![string]::IsNullOrWhiteSpace($msiSource) -and (Test-Path $msiSource) -and $msiSource -notmatch 'Package Cache|Windows\\TEMP|IXP|[0-9a-f]{8,}') { $guessedPath = $msiSource.TrimEnd('\') }
+                    }
+                    if ($guessedPath) {
+                        $prog.RootSource = "MSI.ProductInfo"
+                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "MSI.ProductInfo"
+                        Write-Un1Log -Category "LOCATE" -Message "Local found via MSI COM: $guessedPath" -Color Green
+                    }
+                }
+                catch {}
+            }
+            if (!$guessedPath -and $prog.UninstallString -notmatch "msiexec") {
+                $dir = $null
+                if ($prog.UninstallString -match '-f\s*"?([^"]+\.isu|[^\s,]+\.isu)') { $isuPath = $Matches[1]; if (Test-Path $isuPath -ErrorAction SilentlyContinue) { $dir = Split-Path -Path $isuPath -ErrorAction SilentlyContinue } }
+                if (!$dir) { $cleanStr = $prog.UninstallString.Trim('"').Trim("'"); $exePath = ($cleanStr -split ' /')[0].Trim(); $dir = Split-Path -Path $exePath -ErrorAction SilentlyContinue }
+                if ($dir -and (Test-Path $dir -ErrorAction SilentlyContinue) -and $dir -notmatch 'Package Cache|Windows\\Installer') { 
+                    $guessedPath = $dir 
+                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $exePath
+                    $prog.RootSource = "UninstallString"
+                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "UninstallString"
+                    Write-Un1Log -Category "LOCATE" -Message "Local found via UninstallString: $guessedPath" -Color Green
+                }
+            }
+        }
+
+        # ── PRIORIDADE 5: MuiCache (FriendlyAppName -> ExePath) ──
+        # SÓ RODARÁ SE O REGISTRO (Local, DisplayIcon e UninstallString) FALHOU COMPLETAMENTE
         if (!$guessedPath -and !$exeFromShortcut -and ![string]::IsNullOrWhiteSpace($prog.Nome) -and $Global:MemoryMuiCache.Count -gt 0) {
             
             # Tenta casar primeiro o nome exato
@@ -1142,140 +1203,7 @@ function Get-Un1nst4ll3rDeepSize {
             }
         }
         
-        # ── PRIORIDADE 3: Shortcut Cache (Program icon -> ExePath) ──
-        if (![string]::IsNullOrWhiteSpace($prog.Nome)) {
-            $safeAppName = $prog.Nome -replace '\(.*\)', '' -replace '\s+\d+.*', '' -replace '[^\w\s\-+]', ''
-            $lnkFiles = $Global:MemoryShortcuts | Where-Object { 
-                $_.LnkName -like "*$($prog.Nome)*" -or 
-                $prog.Nome -like "*$($_.LnkName)*" -or 
-                $_.LnkName -like "*$safeAppName*" 
-            }
-            
-            # NOVA LÓGICA: Classificar por NÍVEL DE CONFIANÇA para evitar falsos positivos
-            $exactMatch = @($lnkFiles | Where-Object { $_.LnkName -ieq $prog.Nome })
-            $startsWithMatch = @($lnkFiles | Where-Object { $_.LnkName -ilike "$($prog.Nome)*" -and $_.LnkName -ine $prog.Nome })
-            $containsMatch = @($lnkFiles | Where-Object { $_.LnkName -ilike "*$($prog.Nome)*" -and $_.LnkName -inotlike "$($prog.Nome)*" })
-
-            $prioritizedLnks = @($exactMatch) + @($startsWithMatch) + @($containsMatch)
-
-            foreach ($lnk in $prioritizedLnks) {
-                $target = $lnk.Target
-                $startIn = $lnk.WorkingDir
-                
-                # ======================================================================
-                # PASSO 1: SEMPRE registra a evidência do ÍCONE e Metadados para TODOS os atalhos!
-                # Isso garante que atalhos na Desktop/Taskbar serão mapeados para limpeza.
-                # ======================================================================
-                if (![string]::IsNullOrWhiteSpace($lnk.IconLocation)) {
-                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutIconLocations" -Value $lnk.IconLocation
-                }
-                Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutTitles" -Value $lnk.LnkName
-                Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutPaths" -Value $lnk.ShortcutPath
-                Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutScopes" -Value $lnk.ShortcutScope
-
-                # ======================================================================
-                # PASSO 2: Validação do TARGET para achar a pasta de instalação (guessedPath)
-                # SÓ atualiza o guessedPath se ainda não o encontramos (!guessedPath)
-                # ======================================================================
-                if (!$guessedPath -and ![string]::IsNullOrWhiteSpace($target) -and (Test-Path $target -ErrorAction SilentlyContinue) -and $target -match '\.exe$' -and $target -notmatch 'Windows\\System') {
-                    if ($target -notmatch 'uninstall|unins\d+|setup') {
-                        $exeFromShortcut = $target
-                        $prog.ShortcutTitle = $lnk.LnkName
-                        $prog.ShortcutTarget = $target
-                        $prog.ShortcutPath = $lnk.ShortcutPath
-                        $prog.ShortcutScope = $lnk.ShortcutScope
-                        
-                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ShortcutTargets" -Value $target
-                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $target
-                        
-                        $dir = if (![string]::IsNullOrWhiteSpace($startIn) -and (Test-Path $startIn)) { $startIn } else { Split-Path $target }
-                        if ($dir -and (Test-Path $dir)) { 
-                            $guessedPath = $dir
-                            $prog.RootSource = "Shortcut.Target"
-                            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Shortcut.Target"
-                            Write-Un1Log -Category "LOCATE" -Message "Exe & Local found via Shortcut: Exe=$target | Dir=$dir" -Color Green
-                            # NÃO DAMOS BREAK AQUI! O loop continua para coletar os outros .lnk
-                        }
-                    }
-                } 
-                # ======================================================================
-                # BÔNUS: E se o Target for ruim, mas o ÍCONE aponta pra pasta do app?
-                # ======================================================================
-                elseif (!$guessedPath -and ![string]::IsNullOrWhiteSpace($lnk.IconLocation)) {
-                    $cleanIconPath = $lnk.IconLocation -replace ',\d+$', '' -replace '"', ''
-                    $iconDir = Split-Path $cleanIconPath -ErrorAction SilentlyContinue
-                    
-                    if (![string]::IsNullOrWhiteSpace($iconDir) -and (Test-Path $iconDir -ErrorAction SilentlyContinue) -and $iconDir -notmatch 'Windows\\System') {
-                        $guessedPath = $iconDir
-                        $prog.RootSource = "Shortcut.IconLocation"
-                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Shortcut.IconLocation"
-                        Write-Un1Log -Category "LOCATE" -Message "Local found via Shortcut IconLocation: Dir=$iconDir" -Color Green
-                    }
-                }
-            }
-        }
-
-        # ── PRIORIDADE 4: Shortcut Cache (DisplayIcon from Reg -> ExePath) ──
-        if (!$guessedPath -and !$exeFromShortcut -and ![string]::IsNullOrWhiteSpace($prog.DisplayIcon)) {
-            $cleanIcon = $prog.DisplayIcon -replace '\"', '' -replace ',\d+$', ''
-            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "IconCandidates" -Value $cleanIcon
-            if ((Test-Path $cleanIcon -ErrorAction SilentlyContinue) -and $cleanIcon -notmatch 'Package Cache|Windows\\Installer|shell32|imageres|Windows\\SysWOW64|Windows\\System32') {
-                $dir = Split-Path -Path $cleanIcon -ErrorAction SilentlyContinue
-                if ($dir -and (Test-Path $dir -ErrorAction SilentlyContinue)) {
-                    $guessedPath = $dir
-                    $prog.RootSource = "Registry.DisplayIcon"
-                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Registry.DisplayIcon"
-                    # Corrige o vírus: Se o MuiCache achou um exe errado antes, o DisplayIcon sobrescreve agora.
-                    if ($cleanIcon -match '\.exe$') { $exeFromShortcut = $cleanIcon }
-                    Write-Un1Log -Category "LOCATE" -Message "Local found via DisplayIcon: $guessedPath" -Color Green
-                }
-            }
-        }
-
-        if (!$guessedPath -and ![string]::IsNullOrWhiteSpace($prog.Local) -and (Test-Path $prog.Local)) {
-            $guessedPath = $prog.Local
-            if ([string]::IsNullOrWhiteSpace($prog.RootSource)) { $prog.RootSource = "Registry.InstallLocation" }
-            Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "Registry.InstallLocation"
-            Write-Un1Log -Category "LOCATE" -Message "Local already provided by Registry: $guessedPath" -Color Green
-        }
-
-        # ── PRIORIDADE 5: UnistallString from Reg -> ExePath ──
-        if (!$guessedPath -and ![string]::IsNullOrWhiteSpace($prog.UninstallString)) {
-            $cacheKeyword = $null
-            if ($prog.UninstallString -match 'Package Cache\\.*\\(.+?)\.exe') { $cacheKeyword = ($Matches[1] -split '-')[0] }
-            if ($prog.UninstallString -match "msiexec" -and $prog.UninstallString -match '\{([A-Fa-f0-9\-]+)\}') {
-                $msiGuid = $Matches[1]
-                try {
-                    $installer = New-Object -ComObject WindowsInstaller.Installer
-                    $msiLocation = $installer.ProductInfo("{$msiGuid}", "InstallLocation")
-                    if (![string]::IsNullOrWhiteSpace($msiLocation) -and (Test-Path $msiLocation) -and $msiLocation -notmatch 'Package Cache|Windows\\TEMP|IXP') { $guessedPath = $msiLocation.TrimEnd('\') }
-                    if (!$guessedPath) {
-                        $msiSource = $installer.ProductInfo("{$msiGuid}", "InstallSource")
-                        if (![string]::IsNullOrWhiteSpace($msiSource) -and (Test-Path $msiSource) -and $msiSource -notmatch 'Package Cache|Windows\\TEMP|IXP|[0-9a-f]{8,}') { $guessedPath = $msiSource.TrimEnd('\') }
-                    }
-                    if ($guessedPath) {
-                        $prog.RootSource = "MSI.ProductInfo"
-                        Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "MSI.ProductInfo"
-                        Write-Un1Log -Category "LOCATE" -Message "Local found via MSI COM: $guessedPath" -Color Green
-                    }
-                }
-                catch {}
-            }
-            if (!$guessedPath -and $prog.UninstallString -notmatch "msiexec") {
-                $dir = $null
-                if ($prog.UninstallString -match '-f\s*"?([^"]+\.isu|[^\s,]+\.isu)') { $isuPath = $Matches[1]; if (Test-Path $isuPath -ErrorAction SilentlyContinue) { $dir = Split-Path -Path $isuPath -ErrorAction SilentlyContinue } }
-                if (!$dir) { $cleanStr = $prog.UninstallString.Trim('"').Trim("'"); $exePath = ($cleanStr -split ' /')[0].Trim(); $dir = Split-Path -Path $exePath -ErrorAction SilentlyContinue }
-                if ($dir -and (Test-Path $dir -ErrorAction SilentlyContinue) -and $dir -notmatch 'Package Cache|Windows\\Installer') { 
-                    $guessedPath = $dir 
-                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ExeCandidates" -Value $exePath
-                    $prog.RootSource = "UninstallString"
-                    Add-Un1nst4ll3rEvidenceValue -App $prog -Property "ResolvedBy" -Value "UninstallString"
-                    Write-Un1Log -Category "LOCATE" -Message "Local found via UninstallString: $guessedPath" -Color Green
-                }
-            }
-        }
-        # ── PRIORIDADE 6: App Paths (AppName -> ExePath) ──
-
+        # ── PRIORIDADE 6: Shortcut Cache (Program icon -> ExePath) ──
         if (!$guessedPath -and ![string]::IsNullOrWhiteSpace($prog.Nome)) {
             $safeAppName = $prog.Nome -replace '\(.*\)', '' -replace '\s+\d+.*', '' -replace '[^\w\s\-+]', ''
             $appWords = @($safeAppName -split '\s+' | Where-Object { $_ -notin $genericWords -and $_.Length -gt 1 })
