@@ -1,4 +1,4 @@
-﻿# ======================================================================
+# ======================================================================
 #  Un1nst4ll3r-core.ps1 - Motor de Desinstalação e Limpeza (Ação)
 #  Versão: 0.4.1
 # ======================================================================
@@ -654,7 +654,9 @@ function Wait-Un1nst4ll3rUninstallCompleted {
     # Segurança: Se não temos NADA para monitorar
     if (-not $canAutoConfirm) {
         Stop-Un1nst4ll3rSpinner
-        [void][System.Windows.Forms.MessageBox]::Show("O Un1nst4ll3r não conseguiu mapear os arquivos deste jogo na $platformName para verificar a desinstalação.`n`nPor segurança, a verificação automática foi abortada. Tente usar o botão FORCE UNINSTALL.", "Aviso de Monitoramento", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        $msg = if ($null -ne $script:LangData -and $script:LangData.MsgCannotMapGame) { $script:LangData.MsgCannotMapGame -f $platformName } else { "O Un1nst4ll3r não conseguiu mapear os arquivos deste jogo na $platformName para verificar a desinstalação.`n`nPor segurança, a verificação automática foi abortada. Tente usar o botão FORCE UNINSTALL." }
+        $title = if ($null -ne $script:LangData -and $script:LangData.TitleMonitoringWarning) { $script:LangData.TitleMonitoringWarning } else { "Aviso de Monitoramento" }
+        [void][System.Windows.Forms.MessageBox]::Show($msg, $title, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
         return $false
     }
 
@@ -672,7 +674,8 @@ function Wait-Un1nst4ll3rUninstallCompleted {
     # 4. LOOP DE MONITORAMENTO
     while ($elapsed -lt $TimeoutSeconds) {
         $remainingTime = $TimeoutSeconds - $elapsed
-        Update-Un1nst4ll3rSpinner -Message "Aguardando desinstalação na $platformName ($($remainingTime)s)..."
+        $msg = if ($null -ne $script:LangData -and $script:LangData.SpinnerWaitingPlatform) { $script:LangData.SpinnerWaitingPlatform -f $platformName, $remainingTime } else { "Aguardando desinstalação na $platformName ($($remainingTime)s)..." }
+        Update-Un1nst4ll3rSpinner -Message $msg
         
         if (("System.Windows.Forms.Application" -as [type]) -and [System.Threading.Thread]::CurrentThread.GetApartmentState() -eq [System.Threading.ApartmentState]::STA) {
             [System.Windows.Forms.Application]::DoEvents()
@@ -706,8 +709,9 @@ function Wait-Un1nst4ll3rUninstallCompleted {
     Write-Un1Log -Category "VERIFY" -Message "Tempo limite atingido ($TimeoutSeconds s). Verificando ação do usuário..." -Color DarkYellow
     Stop-Un1nst4ll3rSpinner
 
-    $promptMsg = "O tempo limite atingiu 60 segundos.`n`nVocê confirmou e executou o desinstalador dentro do cliente da $platformName?"
-    $promptResult = [System.Windows.Forms.MessageBox]::Show($promptMsg, "Verificação Necessária - $platformName", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+    $promptMsg = if ($null -ne $script:LangData -and $script:LangData.MsgTimeoutVerificationPrompt) { $script:LangData.MsgTimeoutVerificationPrompt -f $platformName } else { "O tempo limite atingiu 60 segundos.`n`nVocê confirmou e executou o desinstalador dentro do cliente da $platformName?" }
+    $titleMsg = if ($null -ne $script:LangData -and $script:LangData.TitleVerificationRequired) { $script:LangData.TitleVerificationRequired -f $platformName } else { "Verificação Necessária - $platformName" }
+    $promptResult = [System.Windows.Forms.MessageBox]::Show($promptMsg, $titleMsg, [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
     
     if ($promptResult -eq [System.Windows.Forms.DialogResult]::Yes) {
         Start-Sleep -Seconds 2 
@@ -727,13 +731,17 @@ function Wait-Un1nst4ll3rUninstallCompleted {
             return $true
         }
         else {
-            [void][System.Windows.Forms.MessageBox]::Show("Houve um problema na desinstalação. O manifesto do jogo ainda existe no sistema, o desinstalador pode ter sido cancelado.", "Erro de Desinstalação", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+            $msg = if ($null -ne $script:LangData -and $script:LangData.MsgUninstallIssueManifestExists) { $script:LangData.MsgUninstallIssueManifestExists } else { "Houve um problema na desinstalação. O manifesto do jogo ainda existe no sistema, o desinstalador pode ter sido cancelado." }
+            $title = if ($null -ne $script:LangData -and $script:LangData.TitleUninstallError) { $script:LangData.TitleUninstallError } else { "Erro de Desinstalação" }
+            [void][System.Windows.Forms.MessageBox]::Show($msg, $title, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
             Write-Un1Log -Category "VERIFY" -Message "Double-check falhou. Manifesto/Registro ainda existem. Vestígios bloqueados." -Color Red
             return $false
         }
     }
     else {
-        [void][System.Windows.Forms.MessageBox]::Show("Desinstalação cancelada pelo usuário.", "Cancelado", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+        $msg = if ($null -ne $script:LangData -and $script:LangData.UninstallCancelled) { $script:LangData.UninstallCancelled } else { "Desinstalação cancelada pelo usuário." }
+        $title = if ($null -ne $script:LangData -and $script:LangData.TitleCancelled) { $script:LangData.TitleCancelled } else { "Cancelado" }
+        [void][System.Windows.Forms.MessageBox]::Show($msg, $title, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
         Write-Un1Log -Category "VERIFY" -Message "Usuário informou que o desinstalador não foi executado. Operação cancelada. Vestígios bloqueados." -Color Yellow
         return $false
     }

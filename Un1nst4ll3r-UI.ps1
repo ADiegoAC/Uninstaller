@@ -1,4 +1,4 @@
-# ======================================================================
+﻿# ======================================================================
 #  Un1nst4ll3r - Graphical User Interface
 #  Version: 2.2.0
 # ======================================================================
@@ -74,6 +74,54 @@ if (Test-Path $searchtracesPath) {
 else {
     [System.Windows.Forms.MessageBox]::Show("Engine Un1nst4ll3r-searchTraces.ps1 not found in $AppRoot!", "Critical Error", "OK", "Error")
     exit
+}
+
+# ==========================================
+# C# Code to extract specific icons from shell32.dll
+$iconCode = @"
+using System;
+using System.Runtime.InteropServices;
+using System.Drawing;
+
+public class Un1IconExtractor {
+    [DllImport("shell32.dll", CharSet=CharSet.Auto)]
+    public static extern uint ExtractIconEx(string szFileName, int nIconIndex, out IntPtr phiconLarge, out IntPtr phiconSmall, uint nIcons);
+
+    public static Icon GetSmallShellIcon(int index) {
+        IntPtr hLarge, hSmall;
+        ExtractIconEx(Environment.SystemDirectory + "\\shell32.dll", index, out hLarge, out hSmall, 1);
+        
+        if (hSmall != IntPtr.Zero) {
+            return Icon.FromHandle(hSmall);
+        }
+        if (hLarge != IntPtr.Zero) {
+            return Icon.FromHandle(hLarge);
+        }
+        return null;
+    }
+}
+"@
+
+if (-not ("Un1IconExtractor" -as [type])) {
+    Add-Type -TypeDefinition $iconCode -ReferencedAssemblies System.Drawing -ErrorAction Ignore
+}
+
+function Set-ButtonShellIcon {
+    param(
+        [System.Windows.Forms.Button]$Button,
+        [int]$IconIndex
+    )
+    try {
+        $icon = [Un1IconExtractor]::GetSmallShellIcon($IconIndex)
+        if ($null -ne $icon) {
+            $Button.Image = $icon.ToBitmap()
+            $Button.ImageAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+            $Button.TextImageRelation = [System.Windows.Forms.TextImageRelation]::ImageBeforeText
+        }
+    }
+    catch {
+        # Silent fallback
+    }
 }
 
 # ==========================================
@@ -683,19 +731,21 @@ $btnHelp = New-Object System.Windows.Forms.Button
 $btnHelp.Text = $script:LangData.BtnHelp
 $btnHelp.Font = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Bold)
 $btnHelp.BackColor = [System.Drawing.Color]::FromArgb(60, 60, 60)
-$btnHelp.ForeColor = [System.Drawing.Color]::Black
+$btnHelp.ForeColor = [System.Drawing.Color]::LightGray
 $btnHelp.FlatStyle = "Flat"
-$btnHelp.Size = New-Object System.Drawing.Size(55, 20)
-$btnHelp.Top = 12
+$btnHelp.Size = New-Object System.Drawing.Size(80, 25)
+$btnHelp.Top = 17
+Set-ButtonShellIcon -Button $btnHelp -IconIndex 23
 
 $btnAbout = New-Object System.Windows.Forms.Button
 $btnAbout.Text = $script:LangData.BtnAbout
 $btnAbout.Font = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Bold)
 $btnAbout.BackColor = [System.Drawing.Color]::FromArgb(60, 60, 60)
-$btnAbout.ForeColor = [System.Drawing.Color]::Black
+$btnAbout.ForeColor = [System.Drawing.Color]::LightGray
 $btnAbout.FlatStyle = "Flat"
-$btnAbout.Size = New-Object System.Drawing.Size(55, 20)
-$btnAbout.Top = 12
+$btnAbout.Size = New-Object System.Drawing.Size(80, 25)
+$btnAbout.Top = 17
+Set-ButtonShellIcon -Button $btnAbout -IconIndex 277
 
 $headerPanel.Controls.AddRange(@($titleLabel, $versionLabel, $formIcon, $btnHelp, $btnAbout))
 
@@ -726,8 +776,9 @@ $btnScan.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawing.F
 $btnScan.BackColor = [System.Drawing.Color]::FromArgb(15, 50, 120)
 $btnScan.ForeColor = [System.Drawing.Color]::Black
 $btnScan.FlatStyle = "Flat"
-$btnScan.Size = New-Object System.Drawing.Size(100, 35)
+$btnScan.Size = New-Object System.Drawing.Size(120, 35)
 $btnScan.Location = New-Object System.Drawing.Point(10, 15)
+Set-ButtonShellIcon -Button $btnScan -IconIndex 321
 
 $btnDeepScan = New-Object System.Windows.Forms.Button
 $btnDeepScan.Text = $script:LangData.BtnNewScan
@@ -735,8 +786,9 @@ $btnDeepScan.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawi
 $btnDeepScan.BackColor = [System.Drawing.Color]::FromArgb(30, 80, 150)
 $btnDeepScan.ForeColor = [System.Drawing.Color]::Black
 $btnDeepScan.FlatStyle = "Flat"
-$btnDeepScan.Size = New-Object System.Drawing.Size(100, 35)
-$btnDeepScan.Location = New-Object System.Drawing.Point(120, 15)
+$btnDeepScan.Size = New-Object System.Drawing.Size(120, 35)
+$btnDeepScan.Location = New-Object System.Drawing.Point(140, 15)
+Set-ButtonShellIcon -Button $btnDeepScan -IconIndex 56
 
 $btnUninstall = New-Object System.Windows.Forms.Button
 $btnUninstall.Text = $script:LangData.BtnUninstall
@@ -744,8 +796,9 @@ $btnUninstall.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Draw
 $btnUninstall.BackColor = [System.Drawing.Color]::FromArgb(45, 110, 180)
 $btnUninstall.ForeColor = [System.Drawing.Color]::Black
 $btnUninstall.FlatStyle = "Flat"
-$btnUninstall.Size = New-Object System.Drawing.Size(100, 35)
-$btnUninstall.Location = New-Object System.Drawing.Point(230, 15)
+$btnUninstall.Size = New-Object System.Drawing.Size(120, 35)
+$btnUninstall.Location = New-Object System.Drawing.Point(270, 15)
+Set-ButtonShellIcon -Button $btnUninstall -IconIndex 31
 
 $btnSearchTraces = New-Object System.Windows.Forms.Button
 $btnSearchTraces.Text = $script:LangData.BtnCleanTraces
@@ -753,8 +806,9 @@ $btnSearchTraces.Font = New-Object System.Drawing.Font("Consolas", 10, [System.D
 $btnSearchTraces.BackColor = [System.Drawing.Color]::FromArgb(60, 140, 210)
 $btnSearchTraces.ForeColor = [System.Drawing.Color]::Black
 $btnSearchTraces.FlatStyle = "Flat"
-$btnSearchTraces.Size = New-Object System.Drawing.Size(100, 35)
-$btnSearchTraces.Location = New-Object System.Drawing.Point(340, 15)
+$btnSearchTraces.Size = New-Object System.Drawing.Size(120, 35)
+$btnSearchTraces.Location = New-Object System.Drawing.Point(400, 15)
+Set-ButtonShellIcon -Button $btnSearchTraces -IconIndex 171
 
 $btnViewLog = New-Object System.Windows.Forms.Button
 $btnViewLog.Text = $script:LangData.BtnViewLog
@@ -762,8 +816,9 @@ $btnViewLog.Font = New-Object System.Drawing.Font("Consolas", 10, [System.Drawin
 $btnViewLog.BackColor = [System.Drawing.Color]::FromArgb(80, 170, 235)
 $btnViewLog.ForeColor = [System.Drawing.Color]::Black
 $btnViewLog.FlatStyle = "Flat"
-$btnViewLog.Size = New-Object System.Drawing.Size(100, 35)
-$btnViewLog.Location = New-Object System.Drawing.Point(450, 15)
+$btnViewLog.Size = New-Object System.Drawing.Size(120, 35)
+$btnViewLog.Location = New-Object System.Drawing.Point(530, 15)
+Set-ButtonShellIcon -Button $btnViewLog -IconIndex 20
 
 # --- Language Buttons (Positioned dynamically via listener) ---
 $btnLangPT = New-Object System.Windows.Forms.Button
@@ -884,10 +939,10 @@ $dataGridView.Columns["Local"].MinimumWidth = 200
 # Context Menu and Right-Click Selection
 # ============================================================================
 $script:contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
- $script:menuOpenFolder = New-Object System.Windows.Forms.ToolStripMenuItem
- $script:menuOpenFolder.Name = "menuOpenFolder"
- $script:menuOpenFolder.Text = $script:LangData.MenuOpenFolder
- $script:menuOpenFolder.Add_Click({
+$script:menuOpenFolder = New-Object System.Windows.Forms.ToolStripMenuItem
+$script:menuOpenFolder.Name = "menuOpenFolder"
+$script:menuOpenFolder.Text = $script:LangData.MenuOpenFolder
+$script:menuOpenFolder.Add_Click({
         if ($dataGridView.CurrentRow) {
             # 1. Garante que é uma string e remove espaços invisíveis
             $rawPath = if ($dataGridView.CurrentRow.Cells["Local"].Value) { $dataGridView.CurrentRow.Cells["Local"].Value.ToString().Trim() } else { "" }
@@ -910,7 +965,9 @@ $script:contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
                     Invoke-Item -LiteralPath $cleanPath
                 }
                 else {
-                    [System.Windows.Forms.MessageBox]::Show("A pasta de instalação não existe ou não pode ser acessada.`nCaminho: $cleanPath", "Pasta Não Encontrada", "OK", "Warning")
+                    $msg = if ($null -ne $script:LangData -and $script:LangData.MsgInstallFolderNotFound) { $script:LangData.MsgInstallFolderNotFound -f $cleanPath } else { "A pasta de instalaÃ§Ã£o nÃ£o existe ou nÃ£o pode ser acessada.`nCaminho: $cleanPath" }
+                    $title = if ($null -ne $script:LangData -and $script:LangData.TitleFolderNotFound) { $script:LangData.TitleFolderNotFound } else { "Pasta NÃ£o Encontrada" }
+                    [System.Windows.Forms.MessageBox]::Show($msg, $title, "OK", "Warning")
                 }
             }
         }
@@ -1511,9 +1568,27 @@ $btnUninstall.Add_Click({
                 if ($target.Type -eq "Pasta") { $imgIndex = 0 }
                 elseif ($target.Type -eq "Registro") { $imgIndex = 2 }
             
-                $item = New-Object System.Windows.Forms.ListViewItem($target.Type, $imgIndex)
+                $translatedType = $target.Type
+                if ($null -ne $script:LangData) {
+                    if ($target.Type -eq "Registro") { $translatedType = $script:LangData.TraceTypeRegistry }
+                    elseif ($target.Type -eq "Atalho") { $translatedType = $script:LangData.TraceTypeShortcut }
+                    elseif ($target.Type -eq "Pasta") { $translatedType = $script:LangData.TraceTypeFolder }
+                }
+
+                $translatedReason = $target.Reason
+                if ($null -ne $script:LangData) {
+                    if ($target.Reason -eq "OK") { $translatedReason = "OK" }
+                    elseif ($target.Reason -eq "Protegido (Sistema)") { $translatedReason = $script:LangData.TraceReasonProtected }
+                    elseif ($target.Reason -eq "Compartilhado (Outro App)") { $translatedReason = $script:LangData.TraceReasonShared }
+                    elseif ($target.Reason -like "Deep Match *") {
+                        $matchName = $target.Reason -replace '^Deep Match \(|\)$', ''
+                        $translatedReason = $script:LangData.TraceReasonDeepMatch -f $matchName
+                    }
+                }
+
+                $item = New-Object System.Windows.Forms.ListViewItem($translatedType, $imgIndex)
                 $item.SubItems.Add($target.Path)
-                $item.SubItems.Add($target.Reason)
+                $item.SubItems.Add($translatedReason)
                 $item.Checked = $target.Selected
                 $item.Tag = $target
             
@@ -1570,9 +1645,24 @@ $btnNewSearchTraces.Add_Click({
                 $linkColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
 
                 foreach ($res in $resultados) {
-                    $item = New-Object System.Windows.Forms.ListViewItem($res.Type)
+                    $translatedType = $res.Type
+                    if ($null -ne $script:LangData) {
+                        if ($res.Type -eq "Registro") { $translatedType = $script:LangData.TraceTypeRegistry }
+                        elseif ($res.Type -eq "Atalho") { $translatedType = $script:LangData.TraceTypeShortcut }
+                        elseif ($res.Type -eq "Pasta") { $translatedType = $script:LangData.TraceTypeFolder }
+                    }
+                    
+                    $translatedStatus = $res.Status
+                    if ($null -ne $script:LangData) {
+                        if ($res.Status -eq "VestÃ­gio" -or $res.Status -eq "Vestigio") { $translatedStatus = $script:LangData.TraceStatusTrace }
+                        elseif ($res.Status -eq "Pasta Vazia") { $translatedStatus = $script:LangData.TraceStatusEmptyFolder }
+                        elseif ($res.Status -eq "Apenas Unins*") { $translatedStatus = $script:LangData.TraceStatusOnlyUnins }
+                        elseif ($res.Status -like "*ResÃ­duos*" -or $res.Status -like "*Residuos*") { $translatedStatus = $script:LangData.TraceStatusJunkFiles }
+                    }
+
+                    $item = New-Object System.Windows.Forms.ListViewItem($translatedType)
                     $item.SubItems.Add($res.Path)
-                    $item.SubItems.Add($res.Status)
+                    $item.SubItems.Add($translatedStatus)
                     $item.ImageIndex = $res.IconIndex
                     $item.Tag = $res.Path
                 
@@ -1954,7 +2044,7 @@ $repositionButtons = {
     # 2. Reposition Help/About Buttons (Header Panel)
     # Fixed: Use headerPanel width instead of actionsPanel width
     $headWidth = $headerPanel.ClientSize.Width
-    $headBtnWidth = 55
+    $headBtnWidth = 80
     
     $btnAbout.Left = $headWidth - $headBtnWidth - $marginRight
     $btnHelp.Left = $btnAbout.Left - $headBtnWidth - $btnGap
