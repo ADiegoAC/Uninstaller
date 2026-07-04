@@ -435,14 +435,14 @@ function Test-Un1nst4ll3rUninstallCompleted {
         # Ignora o próprio app que estamos verificando (usa Chave ou Nome para comparar)
         if ($otherApp.Chave -ne $App.Chave -and $otherApp.Nome -ne $App.Nome) {
             $sharedExes += @($otherApp.ExePath) +
-                        @($otherApp.ExeCandidates) +
-                        @($otherApp.ShortcutTargets)
+            @($otherApp.ExeCandidates) +
+            @($otherApp.ShortcutTargets)
         }
     }
     # NORMALIZAÇÃO CRÍTICA: Converte tudo para Minúsculas e troca '/' por '\' para a comparação funcionar
     $sharedExes = $sharedExes | Where-Object { ![string]::IsNullOrWhiteSpace($_) } | 
-                  ForEach-Object { $_.Trim().Replace('/', '\').ToLower() } | 
-                  Sort-Object -Unique
+    ForEach-Object { $_.Trim().Replace('/', '\').ToLower() } | 
+    Sort-Object -Unique
 
     # 2. Sua lógica original de coleta de candidatos
     $exeCandidates = @(
@@ -964,7 +964,7 @@ function Get-Un1nst4ll3rTraceTargets {
     $sanitizedApp = Get-Un1nst4ll3rSanitizedName -RawName $App.Nome
     Write-Un1Log -Category "TRACE-FIND" -Message "Sanitized app name for deep search: '$sanitizedApp' (Original: '$($App.Nome)')" -Color Blue
     
-    if (![string]::IsNullOrWhiteSpace($sanitizedApp) -and $sanitizedApp.Length -ge 3) {
+    if (![string]::IsNullOrWhiteSpace($sanitizedApp) -and $sanitizedApp.Length -ge 5) {
         # Busca nas hives principais de software
         $deepRegTraces = Find-Un1nst4ll3rDeepRegistryTraces -SearchTerm $sanitizedApp -AppRoot $AppRoot
 
@@ -990,29 +990,34 @@ function Get-Un1nst4ll3rTraceTargets {
                     
                     # NOVA PROTEÇÃO: Verifica se o vestígio pertence a OUTRO app instalado
                     foreach ($other in $InstalledApps) {
-                        if ($other.Nome -eq $App.Nome -and $other.Chave -eq $App.Chave) { continue }
-                        
-                        # Sanitiza o nome do outro app
+                        if ($other.Chave -eq $App.Chave) { continue }
+
                         $otherSanitized = Get-Un1nst4ll3rSanitizedName -RawName $other.Nome
-                        if (![string]::IsNullOrWhiteSpace($otherSanitized) -and $otherSanitized.Length -ge 3) {
-                            # Se o caminho do registro conter o nome do outro app (ex: "Antigravity IDE"), protege!
-                            if ($normPath -match [regex]::Escape($otherSanitized)) {
+                        if ($otherSanitized -eq $sanitizedApp) { continue }
+
+                        # Só compara contra o ÚLTIMO segmento do path (o nome real da chave),
+                        # não contra o caminho inteiro (que tem lixo genérico tipo Store/Cloud/Current/DefaultAccount)
+                        $leafKey = ($normPath -split '[\\\$]')[-1]
+
+                        if (![string]::IsNullOrWhiteSpace($otherSanitized) -and $otherSanitized.Length -ge 5) {
+                            if ($leafKey -match "\b$([regex]::Escape($otherSanitized))\b") {
                                 $isSharedReg = $true
+                                Write-Un1Log -Category "TRACE-FIND" -Message "  -> Match contra outro app: '$($other.Nome)' (Chave: $($other.Chave))" -Color DarkYellow
                                 break
                             }
                         }
-                        
-                        # Protege também a chave de desinstalação do outro app
-                        if (![string]::IsNullOrWhiteSpace($other.Chave) -and $normPath -match [regex]::Escape($other.Chave)) {
+
+                        if (![string]::IsNullOrWhiteSpace($other.Chave) -and $leafKey -match [regex]::Escape($other.Chave)) {
                             $isSharedReg = $true
+                            Write-Un1Log -Category "TRACE-FIND" -Message "  -> Match contra Chave de outro app: '$($other.Nome)'" -Color DarkYellow
                             break
                         }
                     }
-
                     if ($isSharedReg) {
                         Write-Un1Log -Category "TRACE-FIND" -Message "Registro compartilhado detectado (Deep Search): $normPath" -Color Yellow
                         & $addTarget "Registro" $normPath $true "Compartilhado (Outro App)"
-                    } else {
+                    }
+                    else {
                         & $addTarget "Registro" $normPath $false "Deep Match ($($trace.Nome))"
                     }
                 }
@@ -1183,12 +1188,14 @@ function Get-Un1nst4ll3rSanitizedName {
     # 1. Remove conteúdo entre parênteses (ex: "MyApp (x64)" -> "MyApp")
     # 2. Remove números de versão no final (ex: "MyApp 2.0.1" -> "MyApp")
     # 3. Remove palavras de edição com Regex (Pro, Lite, Free, Version, x86, x64, etc)
-    $cleanName = $RawName -replace '\(.*?\)', '' `
+    $cleanName = $RawName `
+        -replace '\((x86|x64|32-bit|64-bit|beta|rc\d*|trial|demo)\)', '' `
         -replace '\s+v?\d+(\.\d+)*.*$', '' `
         -replace '(?i)\b(pro|lite|free|premium|ultimate|professional|enterprise|trial|version|installer|setup|build|x86|x64|32-bit|64-bit)\b', '' `
-        -replace '[^\w\s\-+]', '' # Remove caracteres especiais
-    
+        -replace '[^\w\s\-+()]', ''
+
     return $cleanName.Trim()
+
 }
 
 # ==========================================
