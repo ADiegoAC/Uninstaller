@@ -719,8 +719,18 @@ function Wait-Un1nst4ll3rUninstallCompleted {
 
         # REGRA DE SUCESSO: O manifesto sumiu? E a pasta está vazia?
         # Se a pasta não estiver vazia, mas o manifesto sumiu, consideramos desinstalado (saves deixados para trás)
-        if (($manifestGone -and $regManifestGone) -and ($folderGone -or $manifestGone -or $regManifestGone)) {
-            $uninstalled = $true
+        # REGRA DE SUCESSO CORRIGIDA
+        if ($initialManifestExists -or $initialRegManifestExists) {
+            # Tinham manifestos. Se algum sumiu, sucesso (mesmo se pasta tiver saves)
+            if (($initialManifestExists -and $manifestGone) -or ($initialRegManifestExists -and $regManifestGone)) {
+                $uninstalled = $true
+            }
+        }
+        else {
+            # Não tinham manifestos mapeados. A pasta TEM que sumir.
+            if ($folderGone) {
+                $uninstalled = $true
+            }
         }
         
         if ($uninstalled) {
@@ -753,16 +763,18 @@ function Wait-Un1nst4ll3rUninstallCompleted {
         $folderGone = if ($initialFolderHasData) { -not $currentFolderHasData } else { $true }
 
         # Double-check: Se o usuário disse que desinstalou, o manifesto TEM que ter sumido.
-        if (($manifestGone -and $regManifestGone) -and ($folderGone -or $manifestGone -or $regManifestGone)) {
-            Write-Un1Log -Category "VERIFY" -Message "Double-check confirmado. Manifesto/Registro removido. Seguindo para rastros." -Color Green
-            return $true
+        # Double-check corrigido
+        if ($initialManifestExists -or $initialRegManifestExists) {
+            if (($initialManifestExists -and $manifestGone) -or ($initialRegManifestExists -and $regManifestGone)) {
+                Write-Un1Log -Category "VERIFY" -Message "Double-check confirmado. Manifesto/Registro removido. Seguindo para rastros." -Color Green
+                return $true
+            }
         }
         else {
-            $msg = if ($null -ne $script:LangData -and $script:LangData.MsgUninstallIssueManifestExists) { $script:LangData.MsgUninstallIssueManifestExists } else { "Houve um problema na desinstalação. O manifesto do jogo ainda existe no sistema, o desinstalador pode ter sido cancelado." }
-            $title = if ($null -ne $script:LangData -and $script:LangData.TitleUninstallError) { $script:LangData.TitleUninstallError } else { "Erro de Desinstalação" }
-            [void][System.Windows.Forms.MessageBox]::Show($msg, $title, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
-            Write-Un1Log -Category "VERIFY" -Message "Double-check falhou. Manifesto/Registro ainda existem. Vestígios bloqueados." -Color Red
-            return $false
+            if ($folderGone) {
+                Write-Un1Log -Category "VERIFY" -Message "Double-check confirmado. Pasta do jogo removida. Seguindo para rastros." -Color Green
+                return $true
+            }
         }
     }
     else {
