@@ -970,7 +970,12 @@ function Get-Un1nst4ll3rTraceTargets {
             "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\$($App.Chave)",
             "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$($App.Chave)"
         )
-    ) | Where-Object { ![string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique
+    ) | Where-Object { 
+        # NOVO: Garante que a Chave não é vazia e o path não termina em \Uninstall
+        ![string]::IsNullOrWhiteSpace($App.Chave) -and 
+        ![string]::IsNullOrWhiteSpace($_) -and 
+        -not $_.TrimEnd('\').EndsWith('\Uninstall', [System.StringComparison]::OrdinalIgnoreCase) 
+    } | Sort-Object -Unique
 
     foreach ($reg in $regPaths) {
         if (Test-Path $reg) {
@@ -1140,6 +1145,19 @@ function Remove-Un1nst4ll3rTraces {
         $success = $false
 
         if ($target.Type -eq "Registro") {
+            # NOVO: REDE DE SEGURANÇA CRÍTICA
+            $leafName = Split-Path -Path $target.Path -Leaf
+            $criticalParents = @('Uninstall', 'Run', 'RunOnce', 'Services', 'CurrentVersion', 'Microsoft', 'SOFTWARE', 'Windows', 'Policies')
+            
+            # Conta as barras para saber profundidade. Ex: HKLM:\SOFTWARE\Vendor\App = 4
+            $depth = ($target.Path.TrimEnd('\') -split '\\').Count
+            
+            if ($criticalParents -contains $leafName -or $depth -lt 5) {
+                Write-Un1Log -Category "CLEANUP" -Message "BLOQUEADO: Chave pai crítica ou path muito raso. Abortado: $($target.Path)" -Color Red
+                $failedCount++
+                continue
+            }
+
             # Normaliza o caminho para o formato do reg.exe (ex: HKEY_LOCAL_MACHINE\...)
             $regPathNormalized = $target.Path -replace '^Microsoft\.PowerShell\.Core\\Registry::HKEY_LOCAL_MACHINE', 'HKEY_LOCAL_MACHINE' `
                 -replace '^Microsoft\.PowerShell\.Core\\Registry::HKEY_CURRENT_USER', 'HKEY_CURRENT_USER' `
