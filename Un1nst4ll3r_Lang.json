@@ -1,6 +1,6 @@
 ﻿{
     "pt-BR":  {
-                  "Default":  false,
+                  "Default":  true,
                   "Title":  "Un1nst4ll3r",
                   "Version":  "v2.8.2 | Scanner de Programas Instalados",
                   "BtnScanList":  "LISTAR SCAN",
@@ -234,7 +234,7 @@
                   "TraceStatusJunkFiles":  "Residuals (Log/Txt/Ico/Lnk)"
               },
     "es-ES":  {
-                  "Default":  true,
+                  "Default":  false,
                   "Title":  "Un1nst4ll3r",
                   "Version":  "v2.8.2 | Escáner de Programas Instalados",
                   "BtnScanList":  "LISTAR ESCANEO",

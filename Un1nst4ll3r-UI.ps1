@@ -1519,32 +1519,54 @@ $btnUninstall.Add_Click({
         Start-Un1nst4ll3rSpinner -InitialMessage ($script:LangData.SpinnerPreparingUninstall) -Location $spinnerPos
 
         try {
-            Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerUninstalling -f $AppData.Nome)
-            $params = @{
-                AppName                   = $AppData.Nome
-                UninstallStringValue      = $AppData.UninstallString
-                QuietUninstallStringValue = $AppData.QuietUninstallString
-                ProgramType               = $AppData.Tipo
-                AppIdentifier             = $AppData.Chave
-            }
-            $UninstallResult = Start-Un1nst4ll3rApp @params
+            $isOrphan = ($AppData.Tipo -ne 'AppX') -and
+            -not (Get-Un1nst4ll3rUninstallerExe $AppData.UninstallString)
 
-            if (!$UninstallResult) {
-                $statusLabel.Text = $script:LangData.UninstallCancelled
-                return
-            }
+            if ($isOrphan) {
+                $titleStr = if ($script:LangData.Title) { $script:LangData.Title } else { "Un1nst4ll3r" }
+                $msg = "Sem desinstalador válido para '$($AppData.Nome)'.`n`n" +
+                "Remoção forçada: encerra processos em`n$($AppData.Local)`n" +
+                "e lista os vestígios para você confirmar.`n`nContinuar?"
+                $ans = [System.Windows.Forms.MessageBox]::Show(
+                    $msg, $titleStr,
+                    [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                    [System.Windows.Forms.MessageBoxIcon]::Warning)
+                if ($ans -ne [System.Windows.Forms.DialogResult]::Yes) {
+                    $statusLabel.Text = $script:LangData.UninstallCancelled
+                    return
+                }
 
-            Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerVerifyingTraces)
-            $uninstallCompleted = Wait-Un1nst4ll3rUninstallCompleted -App $AppData -TimeoutSeconds 60
-            
-            # SE O USUÁRIO DISSE QUE NÃO DESINSTALOU OU SE FALHOU NO DOUBLE CHECK, RETORNA E ABORTA AQUI!
-            if (!$uninstallCompleted) {
-                $statusLabel.Text = $script:LangData.StatusReady
-                return
+                Write-Un1Log -Category "ORPHAN" -Message "Sem desinstalador. Remoção forçada: $($AppData.Nome)" -Color Magenta
+                Update-Un1nst4ll3rSpinner -Message "Encerrando processos..."
+                if (-not (Test-Un1nst4ll3rProtectedCleanupDirectory -Path $AppData.Local)) {
+                    Stop-Un1nst4ll3rProcessesInFolder -Folder $AppData.Local
+                }
+            }
+            else {
+                Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerUninstalling -f $AppData.Nome)
+                $params = @{
+                    AppName                   = $AppData.Nome
+                    UninstallStringValue      = $AppData.UninstallString
+                    QuietUninstallStringValue = $AppData.QuietUninstallString
+                    ProgramType               = $AppData.Tipo
+                    AppIdentifier             = $AppData.Chave
+                }
+                $UninstallResult = Start-Un1nst4ll3rApp @params
+
+                if (!$UninstallResult) {
+                    $statusLabel.Text = $script:LangData.UninstallCancelled
+                    return
+                }
+
+                Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerVerifyingTraces)
+                $uninstallCompleted = Wait-Un1nst4ll3rUninstallCompleted -App $AppData -TimeoutSeconds 60
+                if (!$uninstallCompleted) {
+                    $statusLabel.Text = $script:LangData.StatusReady
+                    return
+                }
             }
 
             Update-Un1nst4ll3rSpinner -Message ($script:LangData.SpinnerMappingTraces)
-
             $Global:PendingCleanApp = $AppData
             $Global:PendingCleanCache = $cacheData
         

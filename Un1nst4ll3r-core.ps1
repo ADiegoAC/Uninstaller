@@ -245,6 +245,33 @@ function Remove-Un1nst4ll3rCleanupDirectory {
     return $removedChild
 }
 
+# ==========================================
+# FUNÇÃO AUXILIAR: Tenta encontrar um desinstalador válido
+# ==========================================
+function Get-Un1nst4ll3rUninstallerExe {
+    param([string]$Cmd)
+    if ([string]::IsNullOrWhiteSpace($Cmd)) { return $null }
+    if ($Cmd -match '^\s*[\w.]+://') { return $Cmd }   # protocolo (steam://...)
+    if ($Cmd -match '^\s*"([^"]+)"') { $exe = $Matches[1] }
+    elseif ($Cmd -match '^\s*(.+?\.(?:exe|msi))(?:\s|$)') { $exe = $Matches[1] }
+    else { return $null }
+    $exe = [Environment]::ExpandEnvironmentVariables($exe)
+    if ($exe -notmatch '[\\/]') { return $exe }        # msiexec etc, sem path
+    if (Test-Path -LiteralPath $exe -PathType Leaf) { return $exe }
+    return $null
+}
+
+function Stop-Un1nst4ll3rProcessesInFolder {
+    param([string]$Folder)
+    if ([string]::IsNullOrWhiteSpace($Folder)) { return }
+    $prefix = $Folder.TrimEnd('\') + '\'
+    Get-Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.Path -and $_.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
+    } | ForEach-Object {
+        Write-Un1Log -Category "CLEANUP" -Message "Stopping $($_.ProcessName) (PID $($_.Id))" -Color Yellow
+        Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+    }
+}
 
 # ==========================================
 # FUNÇÃO AUXILIAR: Heurística de EXE Principal (Trazida do Motor de Busca)
