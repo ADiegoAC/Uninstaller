@@ -1603,6 +1603,7 @@ $btnUninstall.Add_Click({
                     if ($target.Reason -eq "OK") { $translatedReason = "OK" }
                     elseif ($target.Reason -eq "Protegido (Sistema)") { $translatedReason = $script:LangData.TraceReasonProtected }
                     elseif ($target.Reason -eq "Compartilhado (Outro App)") { $translatedReason = $script:LangData.TraceReasonShared }
+                    elseif ($target.Reason -eq "Palpite (Não confirmado)") { $translatedReason = "Palpite (Verifique!)" } # NOVO
                     elseif ($target.Reason -like "Deep Match *") {
                         $matchName = $target.Reason -replace '^Deep Match \(|\)$', ''
                         $translatedReason = $script:LangData.TraceReasonDeepMatch -f $matchName

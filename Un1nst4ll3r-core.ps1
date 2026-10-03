@@ -1115,16 +1115,29 @@ function Get-Un1nst4ll3rTraceTargets {
                 
                 $normalizedOther = $otherLocal.TrimEnd('\/').Replace('/', '\').ToLower()
 
-                # VERIFICAÇÃO DE SOBREPOSIÇÃO BIDIRECIONAL
                 if ($normalizedOther.StartsWith("$normalizedPath\") -or $normalizedPath.StartsWith("$normalizedOther\") -or $normalizedOther -eq $normalizedPath) {
                     $isShared = $true
-                    Write-Un1Log -Category "TRACE-FIND" -Message "Diretório compartilhado detectado: $path (Conflita com: $($other.Nome))" -Color Yellow
                     break
                 }
             }
 
+            # NOVO: Verifica se este path é um palpite
+            $isGuess = $residualPaths -contains $path
+
             if ($isShared) {
                 & $addTarget "Pasta" $path $true "Compartilhado (Outro App)"
+            }
+            elseif ($isGuess) {
+                # É palpite. Força Selected=$false para não apagar errado
+                $item = [PSCustomObject]@{
+                    Type      = "Pasta"
+                    Path      = $path
+                    Protected = $false
+                    Reason    = "Palpite (Não confirmado)"
+                    Selected  = $false
+                    ValueName = ""
+                }
+                [void]$targets.Add($item)
             }
             else {
                 & $addTarget "Pasta" $path $false "OK"
