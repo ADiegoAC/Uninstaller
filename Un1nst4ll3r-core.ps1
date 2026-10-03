@@ -958,6 +958,7 @@ function Get-Un1nst4ll3rTraceTargets {
                 Protected = $Protected
                 Reason    = $Reason
                 Selected  = -not $Protected # Marcado por padrão se não for protegido
+                ValueName = $ValueName
             })
     }
 
@@ -1045,7 +1046,13 @@ function Get-Un1nst4ll3rTraceTargets {
                         & $addTarget "Registro" $normPath $true "Compartilhado (Outro App)"
                     }
                     else {
-                        & $addTarget "Registro" $normPath $false "Deep Match ($($trace.Nome))"
+                        # LÓGICA NOVA AQUI
+                        if ($trace.Tipo -eq 'Valor') {
+                            & $addTarget "RegistroValor" $normPath $false "Deep Match ($($trace.Nome))" $trace.Nome
+                        }
+                        else {
+                            & $addTarget "Registro" $normPath $false "Deep Match ($($trace.Nome))"
+                        }
                     }
                 }
             }
@@ -1190,7 +1197,57 @@ function Remove-Un1nst4ll3rTraces {
             # A função de pasta já tem elevação embutida
             $success = Remove-Un1nst4ll3rCleanupDirectory -Path $target.Path
         }
+        elseif ($target.Type -eq "RegistroValor") {
+            # 1. Proteção contra nulo
+            $valName = if ($null -ne $target.ValueName) { $target.ValueName } else { "" }
+            
+            # 2. Se veio do RegSearch como (Padrao), converte para vazio
+            if ($valName -eq '(Padrao)') { $valName = '' }
+            
+            # 3. Lógica de remoção de valor
+            if ([string]::IsNullOrWhiteSpace($valName)) {
+                # É valor padrão. Remove-ItemProperty falha com nome vazio, usa .NET
+                try {
+                    $key = Get-Item -LiteralPath $target.Path -ErrorAction SilentlyContinue
+                    if ($null -ne $key) { 
+                        $key.DeleteValue('') 
+                        $success = $true 
+                    }
+                }
+                catch {}
+            }
+            else {
+                Remove-ItemProperty -LiteralPath $target.Path -Name $valName -Force -ErrorAction SilentlyContinue
+                $valCheck = Get-ItemProperty -LiteralPath $target.Path -Name $valName -ErrorAction SilentlyContinue
+                if ($null -eq $valCheck) { $success = $true }
+            }
 
+            # 4. Fallback de elevação
+            if (-not $success) {
+                $regPathNormalized = $target.Path -replace '^Microsoft\.PowerShell\.Core\\Registry::HKEY_LOCAL_MACHINE', 'HKEY_LOCAL_MACHINE' `
+                    -replace '^Microsoft\.PowerShell\.Core\\Registry::HKEY_CURRENT_USER', 'HKEY_CURRENT_USER' `
+                    -replace '^HKLM:', 'HKEY_LOCAL_MACHINE' `
+                    -replace '^HKCU:', 'HKEY_CURRENT_USER'
+                Write-Un1Log -Category "CLEANUP" -Message "Falha ao apagar valor. Tentando elevação: $regPathNormalized [$valName]" -Color Magenta
+                try {
+                    if ([string]::IsNullOrWhiteSpace($valName)) {
+                        # /ve apaga o valor padrão
+                        Start-Process -FilePath "reg.exe" -ArgumentList "delete `"$regPathNormalized`" /ve /f" -Verb RunAs -Wait -WindowStyle Hidden -ErrorAction Stop | Out-Null
+                    }
+                    else {
+                        Start-Process -FilePath "reg.exe" -ArgumentList "delete `"$regPathNormalized`" /v `"$valName`" /f" -Verb RunAs -Wait -WindowStyle Hidden -ErrorAction Stop | Out-Null
+                    }
+                    Start-Sleep -Milliseconds 300
+                    
+                    # Double-check pós-elevação
+                    $valCheck = Get-ItemProperty -LiteralPath $target.Path -Name $valName -ErrorAction SilentlyContinue
+                    if ($null -eq $valCheck) { $success = $true }
+                }
+                catch {
+                    Write-Un1Log -Category "CLEANUP" -Message "Elevação falhou para valor: $regPathNormalized [$valName]" -Color Red
+                }
+            }
+        }
         if ($success) {
             $cleanedCount++
         }

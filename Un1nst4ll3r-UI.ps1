@@ -1593,6 +1593,7 @@ $btnUninstall.Add_Click({
                 $translatedType = $target.Type
                 if ($null -ne $script:LangData) {
                     if ($target.Type -eq "Registro") { $translatedType = $script:LangData.TraceTypeRegistry }
+                    elseif ($target.Type -eq "RegistroValor") { $translatedType = $script:LangData.TraceTypeRegistryValue }
                     elseif ($target.Type -eq "Atalho") { $translatedType = $script:LangData.TraceTypeShortcut }
                     elseif ($target.Type -eq "Pasta") { $translatedType = $script:LangData.TraceTypeFolder }
                 }
