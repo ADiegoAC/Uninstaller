@@ -1,4 +1,4 @@
-﻿# ======================================================================
+# ======================================================================
 #  Un1nst4ll3r - Graphical User Interface
 #  Version: 2.2.0
 # ======================================================================
@@ -965,8 +965,8 @@ $script:menuOpenFolder.Add_Click({
                     Invoke-Item -LiteralPath $cleanPath
                 }
                 else {
-                    $msg = if ($null -ne $script:LangData -and $script:LangData.MsgInstallFolderNotFound) { $script:LangData.MsgInstallFolderNotFound -f $cleanPath } else { "A pasta de instalaÃ§Ã£o nÃ£o existe ou nÃ£o pode ser acessada.`nCaminho: $cleanPath" }
-                    $title = if ($null -ne $script:LangData -and $script:LangData.TitleFolderNotFound) { $script:LangData.TitleFolderNotFound } else { "Pasta NÃ£o Encontrada" }
+                    $msg = if ($null -ne $script:LangData -and $script:LangData.MsgInstallFolderNotFound) { $script:LangData.MsgInstallFolderNotFound -f $cleanPath } else { "A pasta de instalação não existe ou não pode ser acessada.`nCaminho: $cleanPath" }
+                    $title = if ($null -ne $script:LangData -and $script:LangData.TitleFolderNotFound) { $script:LangData.TitleFolderNotFound } else { "Pasta Não Encontrada" }
                     [System.Windows.Forms.MessageBox]::Show($msg, $title, "OK", "Warning")
                 }
             }
@@ -1678,10 +1678,10 @@ $btnNewSearchTraces.Add_Click({
                     
                     $translatedStatus = $res.Status
                     if ($null -ne $script:LangData) {
-                        if ($res.Status -eq "VestÃ­gio" -or $res.Status -eq "Vestigio") { $translatedStatus = $script:LangData.TraceStatusTrace }
+                        if ($res.Status -eq "Vestígio" -or $res.Status -eq "Vestigio") { $translatedStatus = $script:LangData.TraceStatusTrace }
                         elseif ($res.Status -eq "Pasta Vazia") { $translatedStatus = $script:LangData.TraceStatusEmptyFolder }
                         elseif ($res.Status -eq "Apenas Unins*") { $translatedStatus = $script:LangData.TraceStatusOnlyUnins }
-                        elseif ($res.Status -like "*ResÃ­duos*" -or $res.Status -like "*Residuos*") { $translatedStatus = $script:LangData.TraceStatusJunkFiles }
+                        elseif ($res.Status -like "*Resíduos*" -or $res.Status -like "*Residuos*") { $translatedStatus = $script:LangData.TraceStatusJunkFiles }
                     }
 
                     $item = New-Object System.Windows.Forms.ListViewItem($translatedType)
