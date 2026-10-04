@@ -1,4 +1,4 @@
-﻿{
+{
     "pt-BR": {
         "Default": true,
         "Title": "Un1nst4ll3r",
@@ -115,7 +115,17 @@
         "TraceTypeShortcut": "Atalho",
         "TitleMonitoringWarning": "Aviso de Monitoramento",
         "TraceStatusJunkFiles": "Resíduos (Log/Txt/Ico/Lnk)",
-        "TraceTypeRegistryValue": "Valor"
+        "TraceTypeRegistryValue": "Valor",
+        "SpinnerRunningAppUninstaller": "Executando desinstalador de {0}...",
+        "SpinnerRemovingAppX": "Removendo pacote AppX...",
+        "SpinnerRemovingMSI": "Removendo via Windows Installer...",
+        "SpinnerRunningRundll32": "Executando desinstalador via Rundll32...",
+        "SpinnerTerminatingProcesses": "Encerrando processos...",
+        "SpinnerRemovingSelectedTraces": "Removendo vestígios selecionados...",
+        "MsgOrphanForceUninstallConfirm": "Sem desinstalador válido para '{0}'.\n\nRemoção forçada: encerra processos em\n{1}\ne lista os vestígios para você confirmar.\n\nContinuar?",
+        "TraceColVerify": "Verificar",
+        "TraceReasonGuess": "Palpite (Verifique!)",
+        "MsgReadmeNotFound": "README não encontrado em {0}"
     },
     "en-US": {
         "Default": false,
@@ -233,7 +243,17 @@
         "TraceTypeShortcut": "Shortcut",
         "TitleMonitoringWarning": "Monitoring Warning",
         "TraceStatusJunkFiles": "Residuals (Log/Txt/Ico/Lnk)",
-        "TraceTypeRegistryValue": "Value"
+        "TraceTypeRegistryValue": "Value",
+        "SpinnerRunningAppUninstaller": "Running uninstaller for {0}...",
+        "SpinnerRemovingAppX": "Removing AppX package...",
+        "SpinnerRemovingMSI": "Removing via Windows Installer...",
+        "SpinnerRunningRundll32": "Running uninstaller via Rundll32...",
+        "SpinnerTerminatingProcesses": "Terminating processes...",
+        "SpinnerRemovingSelectedTraces": "Removing selected traces...",
+        "MsgOrphanForceUninstallConfirm": "No valid uninstaller found for '{0}'.\n\nForced removal: terminates processes in\n{1}\nand lists traces for your confirmation.\n\nContinue?",
+        "TraceColVerify": "Verify",
+        "TraceReasonGuess": "Guess (Verify!)",
+        "MsgReadmeNotFound": "README not found in {0}"
     },
     "es-ES": {
         "Default": false,
@@ -351,6 +371,16 @@
         "TraceTypeShortcut": "Acceso directo",
         "TitleMonitoringWarning": "Aviso de Monitoreo",
         "TraceStatusJunkFiles": "Residuos (Log/Txt/Ico/Lnk)",
-        "TraceTypeRegistryValue": "Valor"
+        "TraceTypeRegistryValue": "Valor",
+        "SpinnerRunningAppUninstaller": "Ejecutando desinstalador de {0}...",
+        "SpinnerRemovingAppX": "Eliminando paquete AppX...",
+        "SpinnerRemovingMSI": "Eliminando mediante Windows Installer...",
+        "SpinnerRunningRundll32": "Ejecutando desinstalador mediante Rundll32...",
+        "SpinnerTerminatingProcesses": "Finalizando procesos...",
+        "SpinnerRemovingSelectedTraces": "Eliminando rastros seleccionados...",
+        "MsgOrphanForceUninstallConfirm": "Sin desinstalador válido para '{0}'.\n\nEliminación forzada: finaliza procesos en\n{1}\ny enumera los rastros para confirmar.\n\n¿Continuar?",
+        "TraceColVerify": "Verificar",
+        "TraceReasonGuess": "Sugerencia (¡Verifique!)",
+        "MsgReadmeNotFound": "README no encontrado en {0}"
     }
 }

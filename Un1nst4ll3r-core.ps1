@@ -1,4 +1,4 @@
-﻿# ======================================================================
+# ======================================================================
 #  Un1nst4ll3r-core.ps1 - Motor de Desinstalação e Limpeza (Ação)
 #  Versão: 0.5.0
 # ======================================================================
@@ -820,7 +820,8 @@ function Start-Un1nst4ll3rApp {
     }    
 
     Write-Un1Log -Category "UNINSTALL" -Message "Attempting to uninstall: $($AppName)" -Color Yellow
-    Update-Un1nst4ll3rSpinner -Message "Executando desinstalador de $($AppName)..."
+    $msg = if ($null -ne $script:LangData -and $script:LangData.SpinnerRunningAppUninstaller) { $script:LangData.SpinnerRunningAppUninstaller -f $AppName } else { "Executando desinstalador de $($AppName)..." }
+    Update-Un1nst4ll3rSpinner -Message $msg
 
     $uninstallCmd = $UninstallStringValue
     $Silent = $false
@@ -841,7 +842,8 @@ function Start-Un1nst4ll3rApp {
 
             if ($null -eq $appxPackage) { throw "AppX package not found for uninstall." }
 
-            Update-Un1nst4ll3rSpinner -Message "Removendo pacote AppX..."
+            $msg = if ($null -ne $script:LangData -and $script:LangData.SpinnerRemovingAppX) { $script:LangData.SpinnerRemovingAppX } else { "Removendo pacote AppX..." }
+            Update-Un1nst4ll3rSpinner -Message $msg
             Remove-AppxPackage -Package $appxPackage.PackageFullName -ErrorAction Stop
             Write-Un1Log -Category "UNINSTALL" -Message "AppX removal successful." -Color Green
             return $true
@@ -850,14 +852,16 @@ function Start-Un1nst4ll3rApp {
             Write-Un1Log -Category "UNINSTALL" -Message "Removing via MSI Exec..." -Color Cyan
             $msiGuid = $Matches[0]
             $msiArgs = if ($Silent) { "/x $msiGuid /qn /norestart" } else { "/x $msiGuid /qb+ /norestart" }
-            Update-Un1nst4ll3rSpinner -Message "Removendo via Windows Installer..."
+            $msg = if ($null -ne $script:LangData -and $script:LangData.SpinnerRemovingMSI) { $script:LangData.SpinnerRemovingMSI } else { "Removendo via Windows Installer..." }
+            Update-Un1nst4ll3rSpinner -Message $msg
             $msiProc = Start-Process "MsiExec.exe" -ArgumentList $msiArgs -Wait -PassThru -Verb RunAs
             Write-Un1Log -Category "UNINSTALL" -Message "MSI removal command executed." -Color Green
             return $true
         }
         elseif ($uninstallCmd -match 'rundll32\.exe') {
             Write-Un1Log -Category "UNINSTALL" -Message "Removing via Rundll32..." -Color Cyan
-            Update-Un1nst4ll3rSpinner -Message "Executando desinstalador via Rundll32..."
+            $msg = if ($null -ne $script:LangData -and $script:LangData.SpinnerRunningRundll32) { $script:LangData.SpinnerRunningRundll32 } else { "Executando desinstalador via Rundll32..." }
+            Update-Un1nst4ll3rSpinner -Message $msg
             
             $isClickOnce = $uninstallCmd -match 'dfshim\.dll'
             $needsElevation = -not $isClickOnce
@@ -1183,7 +1187,8 @@ function Remove-Un1nst4ll3rTraces {
 
     $cleanedCount = 0
     $failedCount = 0
-    Update-Un1nst4ll3rSpinner -Message "Removendo vestígios selecionados..."
+    $msg = if ($null -ne $script:LangData -and $script:LangData.SpinnerRemovingSelectedTraces) { $script:LangData.SpinnerRemovingSelectedTraces } else { "Removendo vestígios selecionados..." }
+    Update-Un1nst4ll3rSpinner -Message $msg
 
     foreach ($target in $Targets) {
         # Segurança extra: nunca apaga protegidos

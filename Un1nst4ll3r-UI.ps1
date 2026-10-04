@@ -1,4 +1,4 @@
-﻿# ======================================================================
+# ======================================================================
 #  Un1nst4ll3r - Graphical User Interface
 #  Version: 2.3.0
 # ======================================================================
@@ -221,6 +221,11 @@ if ($null -eq $script:LangData) {
         StatusReadyClick = "Click SCAN LIST to start."; SplashTitle = "UN1NST4LL3R"
         SplashAnalyze = "Analyzing..."; SplashInit = "Init..."; LogInitText = "Log..."
         Phase1 = "Phase 1..."; Phase2 = "Phase 2..."; Phase3 = "Phase 3..."; PhaseExport = "Exporting..."; PhaseGrid = "Populating..."
+        SpinnerRunningAppUninstaller = "Running uninstaller for {0}..."; SpinnerRemovingAppX = "Removing AppX package..."
+        SpinnerRemovingMSI = "Removing via Windows Installer..."; SpinnerRunningRundll32 = "Running uninstaller via Rundll32..."
+        SpinnerTerminatingProcesses = "Terminating processes..."; SpinnerRemovingSelectedTraces = "Removing selected traces..."
+        MsgOrphanForceUninstallConfirm = "No valid uninstaller found for '{0}'.`n`nForced removal: terminates processes in`n{1}`nand lists traces for your confirmation.`n`nContinue?"
+        TraceColVerify = "Verify"; TraceReasonGuess = "Guess (Verify!)"; MsgReadmeNotFound = "README not found in {0}"
     }
 }
 
@@ -1140,7 +1145,7 @@ $traceListView.SmallImageList = $traceImageList
 $traceListView.Columns.Add($script:LangData.TraceColType, 130) | Out-Null
 $traceListView.Columns.Add($script:LangData.TraceColPath, 600) | Out-Null
 $traceListView.Columns.Add($script:LangData.TraceColStatus, 250) | Out-Null
-$traceListView.Columns.Add("Verificar", 150) | Out-Null
+$traceListView.Columns.Add($script:LangData.TraceColVerify, 150) | Out-Null
 
 # Evento de Clique (Abre a pasta se clicar no texto "Abrir Pasta")
 $traceListView.Add_MouseDown({
@@ -1281,6 +1286,14 @@ function Update-UILanguage {
     
     $btnNewSearchTraces.Text = $L.BtnNewSearchTraces
     $btnConfirmClean.Text = $L.BtnConfirmClean
+
+    if ($traceListView.Columns.Count -ge 4) {
+        $traceListView.Columns[0].Text = $L.TraceColType
+        $traceListView.Columns[1].Text = $L.TraceColPath
+        $traceListView.Columns[2].Text = $L.TraceColStatus
+        $traceListView.Columns[3].Text = $L.TraceColVerify
+    }
+
     $statusLabel.Text = $L.StatusReady
     $form.Refresh()
 }
@@ -1521,9 +1534,13 @@ $btnUninstall.Add_Click({
 
             if ($isOrphan) {
                 $titleStr = if ($script:LangData.Title) { $script:LangData.Title } else { "Un1nst4ll3r" }
-                $msg = "Sem desinstalador válido para '$($AppData.Nome)'.`n`n" +
-                "Remoção forçada: encerra processos em`n$($AppData.Local)`n" +
-                "e lista os vestígios para você confirmar.`n`nContinuar?"
+                $msg = if ($null -ne $script:LangData -and $script:LangData.MsgOrphanForceUninstallConfirm) {
+                    $script:LangData.MsgOrphanForceUninstallConfirm -f $AppData.Nome, $AppData.Local
+                } else {
+                    "Sem desinstalador válido para '$($AppData.Nome)'.`n`n" +
+                    "Remoção forçada: encerra processos em`n$($AppData.Local)`n" +
+                    "e lista os vestígios para você confirmar.`n`nContinuar?"
+                }
                 $ans = [System.Windows.Forms.MessageBox]::Show(
                     $msg, $titleStr,
                     [System.Windows.Forms.MessageBoxButtons]::YesNo,
@@ -1534,7 +1551,8 @@ $btnUninstall.Add_Click({
                 }
 
                 Write-Un1Log -Category "ORPHAN" -Message "Sem desinstalador. Remoção forçada: $($AppData.Nome)" -Color Magenta
-                Update-Un1nst4ll3rSpinner -Message "Encerrando processos..."
+                $spinnerMsg = if ($null -ne $script:LangData -and $script:LangData.SpinnerTerminatingProcesses) { $script:LangData.SpinnerTerminatingProcesses } else { "Encerrando processos..." }
+                Update-Un1nst4ll3rSpinner -Message $spinnerMsg
                 if (-not (Test-Un1nst4ll3rProtectedCleanupDirectory -Path $AppData.Local)) {
                     Stop-Un1nst4ll3rProcessesInFolder -Folder $AppData.Local
                 }
@@ -1602,7 +1620,9 @@ $btnUninstall.Add_Click({
                     if ($target.Reason -eq "OK") { $translatedReason = "OK" }
                     elseif ($target.Reason -eq "Protegido (Sistema)") { $translatedReason = $script:LangData.TraceReasonProtected }
                     elseif ($target.Reason -eq "Compartilhado (Outro App)") { $translatedReason = $script:LangData.TraceReasonShared }
-                    elseif ($target.Reason -eq "Palpite (Não confirmado)") { $translatedReason = "Palpite (Verifique!)" } # NOVO
+                    elseif ($target.Reason -eq "Palpite (Não confirmado)") {
+                        $translatedReason = if ($null -ne $script:LangData -and $script:LangData.TraceReasonGuess) { $script:LangData.TraceReasonGuess } else { "Palpite (Verifique!)" }
+                    }
                     elseif ($target.Reason -like "Deep Match *") {
                         $matchName = $target.Reason -replace '^Deep Match \(|\)$', ''
                         $translatedReason = $script:LangData.TraceReasonDeepMatch -f $matchName
@@ -1885,7 +1905,9 @@ $btnHelp.Add_Click({
         }
         $readmePath = Join-Path $AppRoot $readmeFile
         if (!(Test-Path $readmePath)) {
-            [System.Windows.Forms.MessageBox]::Show("README not found in $AppRoot", "Error", "OK", "Error")
+            $msg = if ($null -ne $script:LangData -and $script:LangData.MsgReadmeNotFound) { $script:LangData.MsgReadmeNotFound -f $AppRoot } else { "README not found in $AppRoot" }
+            $title = if ($null -ne $script:LangData -and $script:LangData.TitleError) { $script:LangData.TitleError } else { "Error" }
+            [System.Windows.Forms.MessageBox]::Show($msg, $title, "OK", "Error")
             return
         }
 
