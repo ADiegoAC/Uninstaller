@@ -2,7 +2,7 @@
     "pt-BR": {
         "Default": true,
         "Title": "Un1nst4ll3r",
-        "Version": "v2.8.2 | Scanner de Programas Instalados",
+        "Version": "v2.9.0 | Scanner de Programas Instalados",
         "BtnScanList": "LISTAR SCAN",
         "BtnNewScan": "NOVO SCAN",
         "BtnUninstall": "DESINSTALAR",
@@ -130,7 +130,7 @@
     "en-US": {
         "Default": false,
         "Title": "Un1nst4ll3r",
-        "Version": "v2.8.2 | Installed Programs Scanner",
+        "Version": "v2.9.0 | Installed Programs Scanner",
         "BtnScanList": "SCAN LIST",
         "BtnNewScan": "NEW SCAN",
         "BtnUninstall": "UNINSTALL",
@@ -258,7 +258,7 @@
     "es-ES": {
         "Default": false,
         "Title": "Un1nst4ll3r",
-        "Version": "v2.8.2 | Escáner de Programas Instalados",
+        "Version": "v2.9.0 | Escáner de Programas Instalados",
         "BtnScanList": "LISTAR ESCANEO",
         "BtnNewScan": "NUEVO ESCANEO",
         "BtnUninstall": "DESINSTALAR",
