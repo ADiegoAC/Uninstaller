@@ -1,12 +1,7 @@
-# ======================================================================
+﻿# ======================================================================
 #  Un1nst4ll3r - Graphical User Interface
-#  Version: 2.2.0
+#  Version: 2.3.0
 # ======================================================================
-
-# Forces the Windows terminal to use UTF-8 to display accents correctly
-#[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-#[Console]::InputEncoding = [System.Text.Encoding]::UTF8
-#$OutputEncoding = [System.Text.Encoding]::UTF8
 
 # ==========================================
 # 1. DPI Awareness Trick (Prevents blurry UI on high DPI screens)
@@ -1124,10 +1119,12 @@ $traceImageList.ColorDepth = "Depth32Bit"
 $folderIcon = [Un1IconExtractor]::GetSmallShellIcon(4)
 $fileIcon = [Un1IconExtractor]::GetSmallShellIcon(0)
 $regIcon = [System.Drawing.Icon]::ExtractAssociatedIcon("$env:windir\regedit.exe")
+$valueIcon = [Un1IconExtractor]::GetSmallShellIcon(69)
 
 if ($folderIcon) { $traceImageList.Images.Add($folderIcon) }
 if ($fileIcon) { $traceImageList.Images.Add($fileIcon) }
 if ($regIcon) { $traceImageList.Images.Add($regIcon) }
+if ($valueIcon) { $traceImageList.Images.Add($valueIcon) }
 
 # Configuração da ListView
 $traceListView = New-Object System.Windows.Forms.ListView
@@ -1589,6 +1586,8 @@ $btnUninstall.Add_Click({
                 $imgIndex = 1 # Padrão para Atalho/Arquivo
                 if ($target.Type -eq "Pasta") { $imgIndex = 0 }
                 elseif ($target.Type -eq "Registro") { $imgIndex = 2 }
+                elseif ($target.Type -eq "RegistroValor") { $imgIndex = 3 }
+
             
                 $translatedType = $target.Type
                 if ($null -ne $script:LangData) {
@@ -1672,6 +1671,7 @@ $btnNewSearchTraces.Add_Click({
                     $translatedType = $res.Type
                     if ($null -ne $script:LangData) {
                         if ($res.Type -eq "Registro") { $translatedType = $script:LangData.TraceTypeRegistry }
+                        elseif ($res.Type -eq "RegistroValor") { $translatedType = $script:LangData.TraceTypeRegistryValue }
                         elseif ($res.Type -eq "Atalho") { $translatedType = $script:LangData.TraceTypeShortcut }
                         elseif ($res.Type -eq "Pasta") { $translatedType = $script:LangData.TraceTypeFolder }
                     }

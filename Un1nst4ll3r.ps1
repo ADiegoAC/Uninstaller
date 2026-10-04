@@ -1456,7 +1456,8 @@ function Get-Un1nst4ll3rDeepSize {
             # 1. Uninstaller (A Prova Mais Forte)
             if ($pUninst.IsMsi -or $sUninst.IsMsi) {
                 if ($pUninst.Exact -eq $sUninst.Exact) { $score += 5 }
-            } elseif (![string]::IsNullOrWhiteSpace($pUninst.Base) -and $pUninst.Base -eq $sUninst.Base) {
+            }
+            elseif (![string]::IsNullOrWhiteSpace($pUninst.Base) -and $pUninst.Base -eq $sUninst.Base) {
                 # O EXE base do desinstalador é idêntico (ex: uninstall.exe)
                 $score += 3
                 
@@ -1521,7 +1522,8 @@ function Get-Un1nst4ll3rDeepSize {
             # Regra 4: Mesmo status de parâmetros. Nome mais curto vence.
             elseif ($prog.Nome.Length -lt $existing.Nome.Length) {
                 $keepNew = $true
-            } else {
+            }
+            else {
                 $keepNew = $false
             }
 
@@ -1529,10 +1531,12 @@ function Get-Un1nst4ll3rDeepSize {
                 [void]$dedupedList.Remove($existing)
                 [void]$dedupedList.Add($prog)
                 Write-Un1Log -Category "DEDUPE" -Message "Duplicate replaced: '$($existing.Nome)' -> '$($prog.Nome)' (Score: $score)" -Color Yellow
-            } else {
+            }
+            else {
                 Write-Un1Log -Category "DEDUPE" -Message "Duplicate skipped: '$($prog.Nome)' (Clone of '$($existing.Nome)', Score: $score)" -Color DarkGray
             }
-        } else {
+        }
+        else {
             [void]$dedupedList.Add($prog)
         }
     }
@@ -1784,7 +1788,7 @@ function Start-Un1nst4ll3rSpinner {
                 
                 # CARREGAMENTO SEGURO: Usa MemoryStream para não lockar o arquivo no disco!
                 $imgBytes = [System.IO.File]::ReadAllBytes($imgPath)
-                $script:imgStream = New-Object System.IO.MemoryStream(,$imgBytes)
+                $script:imgStream = New-Object System.IO.MemoryStream(, $imgBytes)
                 $picBox.Image = [System.Drawing.Image]::FromStream($script:imgStream)
                 
                 $panel.Controls.Add($picBox, 0, 0) | Out-Null

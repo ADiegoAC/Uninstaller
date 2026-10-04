@@ -1,6 +1,6 @@
-# ======================================================================
+﻿# ======================================================================
 #  Un1nst4ll3r-core.ps1 - Motor de Desinstalação e Limpeza (Ação)
-#  Versão: 0.4.1
+#  Versão: 0.5.0
 # ======================================================================
 
 # Inicializa o acumulador global de logs (Independente da UI)
@@ -721,8 +721,8 @@ function Wait-Un1nst4ll3rUninstallCompleted {
         # Se a pasta não estiver vazia, mas o manifesto sumiu, consideramos desinstalado (saves deixados para trás)
         # REGRA DE SUCESSO CORRIGIDA
         if ($initialManifestExists -or $initialRegManifestExists) {
-            # Tinham manifestos. Se algum sumiu, sucesso (mesmo se pasta tiver saves)
-            if (($initialManifestExists -and $manifestGone) -or ($initialRegManifestExists -and $regManifestGone)) {
+            # Tinham manifestos. Os dois sumiram (mesmo se pasta tiver saves)
+            if ($manifestGone -and $regManifestGone) {
                 $uninstalled = $true
             }
         }
@@ -765,7 +765,7 @@ function Wait-Un1nst4ll3rUninstallCompleted {
         # Double-check: Se o usuário disse que desinstalou, o manifesto TEM que ter sumido.
         # Double-check corrigido
         if ($initialManifestExists -or $initialRegManifestExists) {
-            if (($initialManifestExists -and $manifestGone) -or ($initialRegManifestExists -and $regManifestGone)) {
+            if ($manifestGone -and $regManifestGone) {
                 Write-Un1Log -Category "VERIFY" -Message "Double-check confirmado. Manifesto/Registro removido. Seguindo para rastros." -Color Green
                 return $true
             }
@@ -776,6 +776,11 @@ function Wait-Un1nst4ll3rUninstallCompleted {
                 return $true
             }
         }
+        $msg = if ($null -ne $script:LangData -and $script:LangData.MsgUninstallIssueManifestExists) { $script:LangData.MsgUninstallIssueManifestExists } else { "Houve um problema na desinstalação. O manifesto do jogo ainda existe no sistema, o desinstalador pode ter sido cancelado." }
+        $title = if ($null -ne $script:LangData -and $script:LangData.TitleUninstallError) { $script:LangData.TitleUninstallError } else { "Erro de Desinstalação" }
+        [void][System.Windows.Forms.MessageBox]::Show($msg, $title, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        Write-Un1Log -Category "VERIFY" -Message "Double-check falhou. Manifesto/Registro ainda existem. Vestígios bloqueados." -Color Red
+        return $false
     }
     else {
         $msg = if ($null -ne $script:LangData -and $script:LangData.UninstallCancelled) { $script:LangData.UninstallCancelled } else { "Desinstalação cancelada pelo usuário." }
@@ -963,7 +968,7 @@ function Get-Un1nst4ll3rTraceTargets {
 
     # Helper para adicionar alvos
     $addTarget = {
-        param([string]$Type, [string]$Path, [bool]$Protected, [string]$Reason)
+        param([string]$Type, [string]$Path, [bool]$Protected, [string]$Reason, [string]$ValueName = "")
         [void]$targets.Add([PSCustomObject]@{
                 Type      = $Type
                 Path      = $Path
@@ -984,7 +989,6 @@ function Get-Un1nst4ll3rTraceTargets {
         )
     ) | Where-Object { 
         # NOVO: Garante que a Chave não é vazia e o path não termina em \Uninstall
-        ![string]::IsNullOrWhiteSpace($App.Chave) -and 
         ![string]::IsNullOrWhiteSpace($_) -and 
         -not $_.TrimEnd('\').EndsWith('\Uninstall', [System.StringComparison]::OrdinalIgnoreCase) 
     } | Sort-Object -Unique
@@ -1029,7 +1033,28 @@ function Get-Un1nst4ll3rTraceTargets {
             
             # Se a chave não estiver já na lista, avalia se é compartilhada
             if ($existingRegs -notcontains $cleanNormPath) {
-                if ($normPath -ne "HKLM:\SOFTWARE" -and $normPath -ne "HKCU:\SOFTWARE") {
+                
+                # NOVO: Extrai o último pedaço do caminho (nome da chave final)
+                $leafKey = ($normPath -split '[\\\$]')[-1]
+                
+                # NOVA DENYLIST: Chaves pai genéricas do Windows
+                $systemCriticalLeafs = @(
+                    'Microsoft', 'Windows', 'CurrentVersion', 'Run', 'RunOnce', 
+                    'Policies', 'Services', 'Explorer', 'App Paths', 'Classes', 
+                    'WOW6432Node', 'Uninstall', 'Fonts'
+                )
+                
+                # Verifica se a chave final é crítica E se é uma Chave (não Valor)
+                $isSystemCritical = $false
+                if ($trace.Tipo -eq 'Chave' -and $systemCriticalLeafs -contains $leafKey) {
+                    $isSystemCritical = $true
+                }
+
+                # Aplica a proteção de Sistema
+                if ($isSystemCritical) {
+                    & $addTarget "Registro" $normPath $true "Protegido (Sistema)"
+                }
+                elseif ($normPath -ne "HKLM:\SOFTWARE" -and $normPath -ne "HKCU:\SOFTWARE") {
                     
                     $isSharedReg = $false
                     
@@ -1038,11 +1063,10 @@ function Get-Un1nst4ll3rTraceTargets {
                         if ($other.Chave -eq $App.Chave) { continue }
 
                         $otherSanitized = Get-Un1nst4ll3rSanitizedName -RawName $other.Nome
-                        if ($otherSanitized -eq $sanitizedApp) { continue }
 
                         # Só compara contra o ÚLTIMO segmento do path (o nome real da chave),
                         # não contra o caminho inteiro (que tem lixo genérico tipo Store/Cloud/Current/DefaultAccount)
-                        $leafKey = ($normPath -split '[\\\$]')[-1]
+                        $leafKey = if ($trace.Tipo -eq 'Valor') { [string]$trace.Nome } else { ($normPath -split '[\\\$]')[-1] }
 
                         if (![string]::IsNullOrWhiteSpace($otherSanitized) -and $otherSanitized.Length -ge 5) {
                             if ($leafKey -match "\b$([regex]::Escape($otherSanitized))\b") {
@@ -1063,7 +1087,7 @@ function Get-Un1nst4ll3rTraceTargets {
                         & $addTarget "Registro" $normPath $true "Compartilhado (Outro App)"
                     }
                     else {
-                        # LÓGICA NOVA AQUI
+                        # Lógica do Fix 1 (diferenciar Chave de Valor)
                         if ($trace.Tipo -eq 'Valor') {
                             & $addTarget "RegistroValor" $normPath $false "Deep Match ($($trace.Nome))" $trace.Nome
                         }
@@ -1122,7 +1146,7 @@ function Get-Un1nst4ll3rTraceTargets {
             }
 
             # NOVO: Verifica se este path é um palpite
-            $isGuess = $residualPaths -contains $path
+            $isGuess = ($residualPaths -contains $path) -and ((@($App.CleanupDirectoryTargets) + @($App.Local)) -notcontains $path)
 
             if ($isShared) {
                 & $addTarget "Pasta" $path $true "Compartilhado (Outro App)"
@@ -1177,7 +1201,7 @@ function Remove-Un1nst4ll3rTraces {
             # Conta as barras para saber profundidade. Ex: HKLM:\SOFTWARE\Vendor\App = 4
             $depth = ($target.Path.TrimEnd('\') -split '\\').Count
             
-            if ($criticalParents -contains $leafName -or $depth -lt 5) {
+            if ($criticalParents -contains $leafName -or $depth -lt 3) {
                 Write-Un1Log -Category "CLEANUP" -Message "BLOQUEADO: Chave pai crítica ou path muito raso. Abortado: $($target.Path)" -Color Red
                 $failedCount++
                 continue
